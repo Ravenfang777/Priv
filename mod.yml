@@ -1,6 +1,6 @@
-title: KHFM Enemy Config v4.4.2 Multi-Theme
+title: KHFM Enemy Config v4.4.3 Multi-Theme
 originalAuthor: Raven Fang
-description: Encounter-scoped, crash-safe cached private themes plus per-enemy HP and speed. No native music asset is replaced.
+description: Encounter-scoped private themes with native fade-out, detached caching, per-enemy HP, and speed. No native music asset is replaced.
 assets:
 - name: scripts/KHFM_EnemyConfig.lua
   method: copy

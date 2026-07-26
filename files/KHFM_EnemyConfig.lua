@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.2.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.3.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -204,6 +204,7 @@ local INTERNAL_CONFIG = {
     },
 
     PRESENCE_HOLD_TICKS = 180,
+    PRIVATE_THEME_FADE_OUT_MS = 1500,
     AUTO_SLOT1_BONUS_TICKS = 180,
     AUTO_SOURCE_WAIT_TICKS = 90,
     AUTO_SOURCE_PRE_ROLL_TICKS = 300,
@@ -6694,6 +6695,7 @@ local SETTINGS = {
     ENABLE = true,
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
+    FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
     PRIMARY_BGM_ID = 1,
     FIRST_PRIVATE_MUSIC_ID = 900,
 
@@ -6707,7 +6709,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_2_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_3_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -6736,6 +6738,15 @@ local BGM_STOP_FUNCTION_SIGNATURE = {
     0x48, 0x83, 0x3D, 0xDA, 0xD7, 0x0C, 0x02, 0x00,
 }
 
+-- KH1FM's timed slot-volume/stop wrapper. A target volume of zero calls the
+-- native timed stop route before unlinking the playback object, producing a
+-- real fade rather than the immediate cut made by BGM_STOP_FUNCTION_RVA.
+SETTINGS._BGM_FADE_FUNCTION_RVA = 0x000DD390
+SETTINGS._BGM_FADE_FUNCTION_SIGNATURE = {
+    0x48, 0x83, 0xEC, 0x28,
+    0x48, 0x83, 0x3D, 0x3C, 0xDC, 0x0C, 0x02, 0x00,
+}
+
 -- Native callers take this file-manager lock around BGM-resource
 -- registration. V4.2 follows that same main-thread sequence.
 local FILE_MANAGER_POINTER_RVA = 0x021AAE40
@@ -6753,6 +6764,7 @@ local FILE_MANAGER_UNLOCK_SIGNATURE = {
 -- second time.
 local BGM_RESOURCE_LIST_HEAD_RVA = 0x004D65D8
 local BGM_RESOURCE_LIST_TAIL_RVA = 0x004D65E0
+SETTINGS._BGM_RESOURCE_LIST_COUNT_RVA = 0x004D65E8
 -- KH1's original LoadFileWithMalloc implementation calls the imported
 -- 16-byte-aligned allocator and matching free function at these IAT entries.
 -- The call-site signatures prevent using them on an unsupported executable.
@@ -6831,8 +6843,8 @@ local DATA_DISPATCH_COUNTER_OFFSET = 0x11C
 local DATA_ORIGINAL_FRAME_POINTER_OFFSET = 0x120
 local DATA_FRAME_VTABLE_SLOT_OFFSET = 0x130
 local DATA_MAGIC_OFFSET = 0x138
-local DATA_SOURCE_NAME_OFFSET = 0x140
-local DATA_MAGIC = "BGMW42\0\0"
+local DATA_TARGET_NODE_OFFSET = 0x140
+local DATA_MAGIC = "BGMW43\0\0"
 local DATA_SIZE = 0x160
 
 -- The executable has one 288-byte safe code cave. V4.2 first installs a
@@ -6989,29 +7001,143 @@ local CACHE_RELOCATIONS = {
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 
--- Stage 4 stops temporary slot-1 playback when the configured enemy is no
--- longer present. It deliberately does not unregister the private resource or
--- free its native buffer, so the existing crash-safe cache path remains valid
--- for later encounters.
-local STOP_CODE_HEX =
-    "514883ec40833d00000000047529c7050000000000000000c605000000000a"
-    .. "b901000000e800000000f0ff0500000000c605000000000b4883c44059ff25"
-    .. "00000000"
-local STOP_CODE_SIZE = 0x042
-local STOP_RELOCATIONS = {
+-- Stage 3D reactivates a node that Stage 4 deliberately detached. It inserts
+-- the same game-owned resource object at the selectable-list head under the
+-- file-manager lock, then uses the verified slot-1 playback route. No second
+-- registration or buffer ownership transfer occurs.
+SETTINGS._DETACHED_CACHE_CODE_HEX =
+    "514883ec40833d00000000030f85de000000c7050000000000000000c60500"
+    .. "00000004488b0d000000004885c97472e8000000004c8b05000000004d85c0"
+    .. "744c448b150000000045395018753f4c8b1d000000004d3958207532488b05"
+    .. "00000000498940084c8905000000004885c075074c890500000000ff050000"
+    .. "0000488b0d00000000e800000000eb1e488b0d00000000e800000000c60500"
+    .. "00000009eb4fc6050000000005eb46b901000000e800000000b90100000045"
+    .. "31c0448b0d00000000f30f100d00000000f30f1015000000004c894424204c"
+    .. "89442428e800000000f0ff0500000000c60500000000074883c44059ff2500"
+    .. "000000"
+SETTINGS._DETACHED_CACHE_CODE_SIZE = 0x0FB
+SETTINGS._DETACHED_CACHE_RELOCATIONS = {
     { field = 0x007, next = 0x00C,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x010, next = 0x018,
+    { field = 0x014, next = 0x01C,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x01A, next = 0x01F,
+    { field = 0x01E, next = 0x023,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x025, next = 0x029,
+    { field = 0x026, next = 0x02A,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x030, next = 0x034,
+        absolute = FILE_MANAGER_LOCK_RVA },
+    { field = 0x037, next = 0x03B,
+        data = DATA_TARGET_NODE_OFFSET },
+    { field = 0x043, next = 0x047,
+        data = DATA_TARGET_RESOURCE_OFFSET },
+    { field = 0x050, next = 0x054,
+        data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x05D, next = 0x061,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x068, next = 0x06C,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x074, next = 0x078,
+        absolute = BGM_RESOURCE_LIST_TAIL_RVA },
+    { field = 0x07A, next = 0x07E,
+        absolute = SETTINGS._BGM_RESOURCE_LIST_COUNT_RVA },
+    { field = 0x081, next = 0x085,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x086, next = 0x08A,
+        absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x08F, next = 0x093,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x094, next = 0x098,
+        absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x09A, next = 0x09F,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x0A3, next = 0x0A8,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x0B0, next = 0x0B4,
         absolute = BGM_STOP_FUNCTION_RVA },
-    { field = 0x02C, next = 0x030,
+    { field = 0x0BF, next = 0x0C3,
+        data = DATA_DISPATCH_TIME_OFFSET },
+    { field = 0x0C7, next = 0x0CB,
+        data = DATA_DISPATCH_VOLUME_BITS_OFFSET },
+    { field = 0x0CF, next = 0x0D3,
+        data = DATA_DISPATCH_FADE_BITS_OFFSET },
+    { field = 0x0DE, next = 0x0E2,
+        absolute = BGM_FUNCTION_RVA },
+    { field = 0x0E5, next = 0x0E9,
         data = DATA_DISPATCH_COUNTER_OFFSET },
-    { field = 0x032, next = 0x037,
+    { field = 0x0EB, next = 0x0F0,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x03E, next = 0x042,
+    { field = 0x0F7, next = 0x0FB,
+        data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
+}
+
+-- Stage 4 invokes KH1FM's native timed stop and removes the selected private
+-- resource from the file manager's selectable BGM list. The resource object
+-- and SCD buffer remain allocated for crash-safe later reinsertion, but native
+-- battle startup can no longer select the private theme on its own.
+SETTINGS._FADE_DETACH_CODE_HEX =
+    "514883ec40833d00000000040f85f1000000c7050000000000000000c60500"
+    .. "0000000ab9010000000f57c9448b0500000000e800000000488b0d00000000"
+    .. "4885c90f84b5000000e800000000448b15000000004c8b1d000000004c8b05"
+    .. "000000004531c94d85c0746c4539501875064d39582074094d89c14d8b4008"
+    .. "ebe6498b40084d85c9740649894108eb07488905000000004c390500000000"
+    .. "75074c890d0000000049c74008000000004c890500000000ff0d0000000048"
+    .. "8b0d00000000e800000000f0ff0500000000c605000000000beb2e48c70500"
+    .. "00000000000000488b0d00000000e800000000f0ff0500000000c605000000"
+    .. "000eeb07c60500000000054883c44059ff2500000000"
+SETTINGS._FADE_DETACH_CODE_SIZE = 0x10E
+SETTINGS._FADE_DETACH_RELOCATIONS = {
+    { field = 0x007, next = 0x00C,
+        data = DATA_DISPATCH_COMMAND_OFFSET },
+    { field = 0x014, next = 0x01C,
+        data = DATA_DISPATCH_COMMAND_OFFSET },
+    { field = 0x01E, next = 0x023,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x02E, next = 0x032,
+        data = DATA_DISPATCH_TIME_OFFSET },
+    { field = 0x033, next = 0x037,
+        absolute = SETTINGS._BGM_FADE_FUNCTION_RVA },
+    { field = 0x03A, next = 0x03E,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x048, next = 0x04C,
+        absolute = FILE_MANAGER_LOCK_RVA },
+    { field = 0x04F, next = 0x053,
+        data = DATA_TARGET_RESOURCE_OFFSET },
+    { field = 0x056, next = 0x05A,
+        data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x05D, next = 0x061,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x090, next = 0x094,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x097, next = 0x09B,
+        absolute = BGM_RESOURCE_LIST_TAIL_RVA },
+    { field = 0x0A0, next = 0x0A4,
+        absolute = BGM_RESOURCE_LIST_TAIL_RVA },
+    { field = 0x0AF, next = 0x0B3,
+        data = DATA_TARGET_NODE_OFFSET },
+    { field = 0x0B5, next = 0x0B9,
+        absolute = SETTINGS._BGM_RESOURCE_LIST_COUNT_RVA },
+    { field = 0x0BC, next = 0x0C0,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x0C1, next = 0x0C5,
+        absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x0C8, next = 0x0CC,
+        data = DATA_DISPATCH_COUNTER_OFFSET },
+    { field = 0x0CE, next = 0x0D3,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x0D8, next = 0x0E0,
+        data = DATA_TARGET_NODE_OFFSET },
+    { field = 0x0E3, next = 0x0E7,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x0E8, next = 0x0EC,
+        absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x0EF, next = 0x0F3,
+        data = DATA_DISPATCH_COUNTER_OFFSET },
+    { field = 0x0F5, next = 0x0FA,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x0FE, next = 0x103,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x10A, next = 0x10E,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 local FRAME_CODE_CAPACITY = REGISTER_CODE_SIZE
@@ -7069,6 +7195,7 @@ local lastDispatchStatus = 0
 local lastLoadSize = 0
 local lastLoadBuffer = 0
 local lastTargetResource = 0
+SETTINGS._lastTargetNode = 0
 local totalActiveSwitches = 0
 local totalPrivateStops = 0
 local totalCachedBytes = 0
@@ -7086,7 +7213,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.2:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.3:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7112,17 +7239,18 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.2 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.3 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
-            .. "played temporarily on BGM slot 1, and stopped after the "
-            .. "configured enemy leaves the encounter.",
+            .. "played temporarily on BGM slot 1, then faded and detached "
+            .. "after the configured enemy leaves the encounter.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
         "Valid theme rows: " .. tostring(SETTINGS.VALID_THEME_COUNT),
         "Presence hold ticks: " .. tostring(SETTINGS.PRESENCE_HOLD_TICKS),
+        "Fade-out milliseconds: " .. tostring(SETTINGS.FADE_OUT_MS),
         "",
         "THEME CATALOG",
     }
@@ -7133,13 +7261,15 @@ local function buildReport()
         for _, theme in ipairs(SETTINGS.THEME_ORDER) do
             lines[#lines + 1] = string.format(
                 "%s | file=%s | runtime=%s | size=%u | "
-                    .. "priority=%d | loaded=%s | activations=%u",
+                    .. "priority=%d | loaded=%s | detached=%s | "
+                    .. "activations=%u",
                 theme.name,
                 theme.filename,
                 theme.runtimeName,
                 theme.size,
                 theme.priority,
                 tostring(theme.loaded == true),
+                tostring(theme.detached == true),
                 theme.activations or 0
             )
         end
@@ -7160,7 +7290,7 @@ local function buildReport()
         totalActiveSwitches
     )
     lines[#lines + 1] = string.format(
-        "Private BGM stops completed: %u",
+        "Private BGM fades/detaches completed: %u",
         totalPrivateStops
     )
     lines[#lines + 1] = string.format(
@@ -7182,6 +7312,10 @@ local function buildReport()
     lines[#lines + 1] = string.format(
         "Last registered resource: 0x%08X",
         lastTargetResource
+    )
+    lines[#lines + 1] = string.format(
+        "Last detached resource node: 0x%X",
+        SETTINGS._lastTargetNode
     )
     lines[#lines + 1] = ""
     lines[#lines + 1] = "STARTUP / STATUS"
@@ -7695,8 +7829,6 @@ local function buildHookData()
         data[index] = 0
     end
     local initial = SETTINGS.INITIAL_THEME
-    putString(data, DATA_SOURCE_NAME_OFFSET, 0x20,
-        "music000.win32.scd")
     putString(data, DATA_TARGET_NAME_OFFSET, 0x20,
         initial.runtimeName)
     putU32(data, DATA_LOAD_SIZE_OFFSET, initial.size)
@@ -7864,11 +7996,11 @@ function SETTINGS._installCacheStage()
     return true
 end
 
-function SETTINGS._installStopStage()
+function SETTINGS._installDetachedCacheStage()
     local frameCode, reason = buildFrameCode(
-        STOP_CODE_HEX,
-        STOP_CODE_SIZE,
-        STOP_RELOCATIONS
+        SETTINGS._DETACHED_CACHE_CODE_HEX,
+        SETTINGS._DETACHED_CACHE_CODE_SIZE,
+        SETTINGS._DETACHED_CACHE_RELOCATIONS
     )
     if frameCode == nil then
         return false, reason
@@ -7876,9 +8008,27 @@ function SETTINGS._installStopStage()
     local ok
     ok, reason = writeArrayChecked(frameCodeRva, frameCode)
     if not ok then
-        return false, "private-stop stage install failed: " .. reason
+        return false, "detached-cache stage install failed: " .. reason
     end
-    SETTINGS._frameStage = "stop"
+    SETTINGS._frameStage = "detached-cache"
+    return true
+end
+
+function SETTINGS._installFadeDetachStage()
+    local frameCode, reason = buildFrameCode(
+        SETTINGS._FADE_DETACH_CODE_HEX,
+        SETTINGS._FADE_DETACH_CODE_SIZE,
+        SETTINGS._FADE_DETACH_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    local ok
+    ok, reason = writeArrayChecked(frameCodeRva, frameCode)
+    if not ok then
+        return false, "fade/detach stage install failed: " .. reason
+    end
+    SETTINGS._frameStage = "fade-detach"
     return true
 end
 
@@ -8494,7 +8644,7 @@ local function fixedStringBytes(capacity, value)
     return bytes
 end
 
-function SETTINGS._publishThemeFields(theme, buffer, resource)
+function SETTINGS._publishThemeFields(theme, buffer, resource, node)
     local writes = {
         {
             kind = "array",
@@ -8525,6 +8675,12 @@ function SETTINGS._publishThemeFields(theme, buffer, resource)
             offset = DATA_TARGET_RESOURCE_OFFSET,
             value = resource or 0,
             name = "target resource",
+        },
+        {
+            kind = "long",
+            offset = DATA_TARGET_NODE_OFFSET,
+            value = node or 0,
+            name = "detached resource node",
         },
         {
             kind = "int",
@@ -8590,14 +8746,21 @@ function SETTINGS._queueThemeSwitch(theme)
         and plausibleRuntimeAddress(theme.buffer)
         and type(theme.resource) == "number"
         and theme.resource ~= 0
+    local useDetachedCache = useCache and theme.detached == true
     local ok
     local reason
     if useCache then
-        ok, reason = SETTINGS._installCacheStage()
+        if useDetachedCache then
+            ok, reason = SETTINGS._installDetachedCacheStage()
+        else
+            ok, reason = SETTINGS._installCacheStage()
+        end
     else
         theme.loaded = false
         theme.buffer = nil
         theme.resource = nil
+        theme.node = nil
+        theme.detached = false
         ok, reason = SETTINGS._installAllocationStage()
     end
     if not ok then
@@ -8614,7 +8777,8 @@ function SETTINGS._queueThemeSwitch(theme)
     ok, reason = SETTINGS._publishThemeFields(
         theme,
         useCache and theme.buffer or 0,
-        useCache and theme.resource or 0
+        useCache and theme.resource or 0,
+        useDetachedCache and theme.node or 0
     )
     if not ok then
         enabled = false
@@ -8628,7 +8792,9 @@ function SETTINGS._queueThemeSwitch(theme)
     end
 
     pendingTheme = theme
-    pendingMode = useCache and "cache" or "load"
+    pendingMode = useCache
+        and (useDetachedCache and "detached-cache" or "cache")
+        or "load"
     activeSwitchQueued = true
     SETTINGS._copyOffset = 0
     SETTINGS._copyFile = nil
@@ -8665,7 +8831,7 @@ function SETTINGS._queueThemeSwitch(theme)
     ), true)
 end
 
-function SETTINGS._queueThemeStop(theme, reasonText)
+function SETTINGS._queueThemeFade(theme, reasonText)
     if pendingTheme ~= nil or activeSwitchQueued then
         return
     end
@@ -8678,11 +8844,34 @@ function SETTINGS._queueThemeStop(theme, reasonText)
 
     local ok
     local reason
-    ok, reason = SETTINGS._installStopStage()
+    ok, reason = SETTINGS._installFadeDetachStage()
     if not ok then
         enabled = false
         addStatus(
-            "DISABLED: private-stop stage install failed for "
+            "DISABLED: fade/detach stage install failed for "
+                .. theme.name .. ": " .. tostring(reason) .. ".",
+            true
+        )
+        saveReport()
+        return
+    end
+
+    ok, reason = SETTINGS._publishThemeFields(
+        theme,
+        theme.buffer or 0,
+        theme.resource or 0,
+        0
+    )
+    if ok then
+        ok, reason = writeIntChecked(
+            dataRva + DATA_DISPATCH_TIME_OFFSET,
+            SETTINGS.FADE_OUT_MS
+        )
+    end
+    if not ok then
+        enabled = false
+        addStatus(
+            "DISABLED: fade/detach publish failed for "
                 .. theme.name .. ": " .. tostring(reason) .. ".",
             true
         )
@@ -8691,7 +8880,7 @@ function SETTINGS._queueThemeStop(theme, reasonText)
     end
 
     pendingTheme = theme
-    pendingMode = "stop"
+    pendingMode = "fade-detach"
     activeSwitchQueued = true
     ok, reason = writeIntChecked(
         dataRva + DATA_DISPATCH_STATUS_OFFSET,
@@ -8709,7 +8898,7 @@ function SETTINGS._queueThemeStop(theme, reasonText)
         activeSwitchQueued = false
         enabled = false
         addStatus(
-            "DISABLED: private-stop request failed for "
+            "DISABLED: fade/detach request failed for "
                 .. theme.name .. ": " .. tostring(reason) .. ".",
             true
         )
@@ -8718,12 +8907,13 @@ function SETTINGS._queueThemeStop(theme, reasonText)
     end
 
     addTimeline(string.format(
-        "PRIVATE THEME STOP QUEUED tick=%u seconds=%.3f "
-            .. "enemy=%s slot=%u reason=%s",
+        "PRIVATE THEME FADE QUEUED tick=%u seconds=%.3f "
+            .. "enemy=%s slot=%u fade_ms=%u reason=%s",
         tick,
         tick / 60,
         theme.name,
         SETTINGS.PRIMARY_BGM_ID,
+        SETTINGS.FADE_OUT_MS,
         tostring(reasonText or "enemy no longer present")
     ), true)
 end
@@ -8760,7 +8950,7 @@ function SETTINGS._updatePresenceAndRoute()
                 activeEnemy
             ), true)
         end
-        if pendingMode ~= "stop"
+        if pendingMode ~= "fade-detach"
             and (
                 playbackActive
                 or currentTheme ~= nil
@@ -8773,7 +8963,7 @@ function SETTINGS._updatePresenceAndRoute()
         activeTheme = nil
         if stopRequested and pendingTheme == nil then
             if currentTheme ~= nil then
-                SETTINGS._queueThemeStop(
+                SETTINGS._queueThemeFade(
                     currentTheme,
                     "presence timeout or scene change"
                 )
@@ -8785,7 +8975,7 @@ function SETTINGS._updatePresenceAndRoute()
         return
     end
 
-    if pendingMode ~= "stop" then
+    if pendingMode ~= "fade-detach" then
         stopRequested = false
     end
     if activeEnemy ~= selected.profile.name then
@@ -8803,6 +8993,19 @@ function SETTINGS._updatePresenceAndRoute()
             activeTheme.priority,
             selected.source
         ), true)
+    end
+
+    if currentTheme ~= nil
+        and currentTheme.name ~= activeTheme.name
+    then
+        stopRequested = true
+        if pendingTheme == nil then
+            SETTINGS._queueThemeFade(
+                currentTheme,
+                "configured encounter theme changed"
+            )
+        end
+        return
     end
 
     if enabled
@@ -9000,6 +9203,8 @@ function SETTINGS._processDispatchCounter()
     lastTargetResource = unsigned32(
         safeReadInt(dataRva + DATA_TARGET_RESOURCE_OFFSET) or 0
     )
+    SETTINGS._lastTargetNode =
+        safeReadLong(dataRva + DATA_TARGET_NODE_OFFSET) or 0
     if status ~= lastDispatchStatus then
         lastDispatchStatus = status
         if status == 1 then
@@ -9029,6 +9234,8 @@ function SETTINGS._processDispatchCounter()
                 stale.loaded = false
                 stale.buffer = nil
                 stale.resource = nil
+                stale.node = nil
+                stale.detached = false
                 totalCachedBytes = math.max(
                     0,
                     totalCachedBytes - stale.size
@@ -9044,6 +9251,14 @@ function SETTINGS._processDispatchCounter()
                 tick,
                 tick / 60,
                 stale ~= nil and stale.name or "none"
+            ), true)
+        elseif status == 14 then
+            addTimeline(string.format(
+                "PRIVATE RESOURCE ALREADY ABSENT tick=%u seconds=%.3f "
+                    .. "enemy=%s; CACHE WILL BE REBUILT ON NEXT USE",
+                tick,
+                tick / 60,
+                pendingTheme ~= nil and pendingTheme.name or "none"
             ), true)
         elseif status == 3 or status == 5
             or status == 6 or status == 8
@@ -9089,12 +9304,13 @@ function SETTINGS._processDispatchCounter()
             ), true)
         elseif status == 10 then
             addTimeline(string.format(
-                "PRIVATE BGM STOP ENTERED tick=%u seconds=%.3f "
-                    .. "enemy=%s slot=%u",
+                "PRIVATE BGM FADE ENTERED tick=%u seconds=%.3f "
+                    .. "enemy=%s slot=%u fade_ms=%u",
                 tick,
                 tick / 60,
                 pendingTheme ~= nil and pendingTheme.name or "none",
-                SETTINGS.PRIMARY_BGM_ID
+                SETTINGS.PRIMARY_BGM_ID,
+                SETTINGS.FADE_OUT_MS
             ), false)
         end
     end
@@ -9109,8 +9325,28 @@ function SETTINGS._processDispatchCounter()
 
     local completed = pendingTheme
     local completedMode = pendingMode
-    if completedMode == "stop" then
+    if completedMode == "fade-detach" then
         totalPrivateStops = totalPrivateStops + delta
+        local cacheRetained = status == 11
+            and plausibleRuntimeAddress(SETTINGS._lastTargetNode)
+        if completed ~= nil then
+            if cacheRetained then
+                completed.node = SETTINGS._lastTargetNode
+                completed.detached = true
+            else
+                if completed.loaded then
+                    totalCachedBytes = math.max(
+                        0,
+                        totalCachedBytes - completed.size
+                    )
+                end
+                completed.loaded = false
+                completed.buffer = nil
+                completed.resource = nil
+                completed.node = nil
+                completed.detached = false
+            end
+        end
         currentTheme = nil
         playbackActive = false
         stopRequested = false
@@ -9118,15 +9354,18 @@ function SETTINGS._processDispatchCounter()
         pendingMode = nil
         activeSwitchQueued = false
         addTimeline(string.format(
-            "PRIVATE THEME STOPPED tick=%u seconds=%.3f "
-                .. "enemy=%s slot=%u count=%u total=%u "
-                .. "cache_retained=true",
+            "PRIVATE THEME FADED AND DETACHED tick=%u seconds=%.3f "
+                .. "enemy=%s slot=%u fade_ms=%u count=%u total=%u "
+                .. "cache_retained=%s node=0x%X",
             tick,
             tick / 60,
             completed ~= nil and completed.name or "none",
             SETTINGS.PRIMARY_BGM_ID,
+            SETTINGS.FADE_OUT_MS,
             delta,
-            totalPrivateStops
+            totalPrivateStops,
+            tostring(cacheRetained),
+            cacheRetained and SETTINGS._lastTargetNode or 0
         ), true)
         return
     end
@@ -9137,8 +9376,11 @@ function SETTINGS._processDispatchCounter()
             completed.loaded = true
             completed.buffer = lastLoadBuffer
             completed.resource = lastTargetResource
+            completed.node = nil
+            completed.detached = false
             totalCachedBytes = totalCachedBytes + completed.size
         end
+        completed.detached = false
         completed.activations = (completed.activations or 0) + delta
         currentTheme = completed
         playbackActive = activeEnemy == completed.name
@@ -9244,6 +9486,8 @@ function SETTINGS._prepareThemeCatalog()
                             loaded = false,
                             buffer = nil,
                             resource = nil,
+                            node = nil,
+                            detached = false,
                             activations = 0,
                         }
                         SETTINGS.THEMES[name] = theme
@@ -9361,6 +9605,7 @@ function SETTINGS._resetPrivateThemeState()
     lastLoadSize = 0
     lastLoadBuffer = 0
     lastTargetResource = 0
+    SETTINGS._lastTargetNode = 0
     totalActiveSwitches = 0
     totalPrivateStops = 0
     totalCachedBytes = 0
@@ -9378,8 +9623,8 @@ function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
         "Route: every configured enemy selects its own private SCD on "
-            .. "temporary BGM slot 1 playback; the slot is stopped after "
-            .. "that enemy leaves the encounter.",
+            .. "temporary BGM slot 1 playback; the slot fades out and its "
+            .. "private resource is detached after that enemy leaves.",
         false
     )
     addStatus(
@@ -9394,6 +9639,19 @@ function SETTINGS._privateThemeInit()
     )
     if not SETTINGS.ENABLE then
         addStatus("DISABLED: SETTINGS.ENABLE is false.", true)
+        saveReport()
+        return
+    end
+    if type(SETTINGS.FADE_OUT_MS) ~= "number"
+        or SETTINGS.FADE_OUT_MS < 1
+        or SETTINGS.FADE_OUT_MS > 10000
+        or SETTINGS.FADE_OUT_MS ~= math.floor(SETTINGS.FADE_OUT_MS)
+    then
+        addStatus(
+            "DISABLED: PRIVATE_THEME_FADE_OUT_MS must be an integer "
+                .. "from 1 through 10000.",
+            true
+        )
         saveReport()
         return
     end
@@ -9442,6 +9700,20 @@ function SETTINGS._privateThemeInit()
     ) then
         addStatus(
             "DISABLED: verified BGM stop-function signature mismatch.",
+            true
+        )
+        saveReport()
+        return
+    end
+    if not arraysEqual(
+        safeReadArray(
+            SETTINGS._BGM_FADE_FUNCTION_RVA,
+            #SETTINGS._BGM_FADE_FUNCTION_SIGNATURE
+        ),
+        SETTINGS._BGM_FADE_FUNCTION_SIGNATURE
+    ) then
+        addStatus(
+            "DISABLED: verified BGM fade-function signature mismatch.",
             true
         )
         saveReport()
@@ -9551,7 +9823,7 @@ function SETTINGS._privateThemeInit()
             .. "ROUTE ARMED, NATIVE BUFFER READY, "
             .. "PRIVATE SCD COPY VERIFIED, then ACTIVE SWITCH EXECUTED "
             .. "on slot 1. After defeat it should show PRIVATE THEME "
-            .. "STOPPED. Use a full game restart instead of F1.",
+            .. "FADED AND DETACHED. Use a full game restart instead of F1.",
         true
     )
     saveReport()
