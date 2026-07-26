@@ -87,7 +87,7 @@ local ENEMY_SETTINGS = {
     ["Selphie"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.4, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
     ["Wakka"] = {
         MAX_HP = 350,
-        ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 2.00, [0x02] = 2.00, [0x06] = 2.00, [0x07] = 2.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 3.00, [0xF5] = 3.00, [0xF6] = 3.00, [0xF7] = 3.00 },
+        ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0x02] = 2.00, [0x06] = 4.00, [0x07] = 4.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 4.00, [0xF5] = 5.00, [0xF6] = 5.00, [0xF7] = 1.50 },
         OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
