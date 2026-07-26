@@ -1,6 +1,6 @@
-title: KHFM Enemy Config v4.4.3 Multi-Theme
+title: KHFM Enemy Config v4.4.4 Target Gate + Movement Speed
 originalAuthor: Raven Fang
-description: Encounter-scoped private themes with native fade-out, detached caching, per-enemy HP, and speed. No native music asset is replaced.
+description: Encounter-gated private themes with native fade-out, detached caching, per-enemy HP, animation speed, and actual world-movement speed. No native music asset is replaced.
 assets:
 - name: scripts/KHFM_EnemyConfig.lua
   method: copy

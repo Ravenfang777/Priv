@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.3.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.4.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -27,8 +27,10 @@ LUAGUI_DESC = "Per-enemy HP, speed, and private battle themes without native mus
 -- Edit the enemy rows below. nil means "leave unchanged."
 --
 -- MAX_HP          Exact HP amount.
--- ANIMATION_SPEED Per-animation multipliers: { [animation ID] = speed }
--- OVERALL_SPEED   Speed for all other animations. Avoid on projectile users.
+-- ANIMATION_SPEED Per-animation animation + world-movement multipliers:
+--                 { [animation ID] = speed }
+-- OVERALL_SPEED   Animation + world-movement speed for all other animations.
+--                 Avoid on projectile users.
 -- BATTLE_THEME    Private .win32.scd filename beside this Lua.
 --                 nil keeps the game's native music for that enemy.
 --
@@ -80,13 +82,13 @@ local ENEMY_SETTINGS = {
     ["Missile Diver"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Chimera"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Battleship"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Riku - Wooden Sword"] = { MAX_HP = 500, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
-    ["Tidus"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
-    ["Selphie"] = { MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
+    ["Riku - Wooden Sword"] = { MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+    ["Tidus"] = { MAX_HP = 350, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+    ["Selphie"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
     ["Wakka"] = {
-        MAX_HP = 300,
-        ANIMATION_SPEED = { [0xE7] = 3.00, [0x02] = 1.00 },
-        OVERALL_SPEED = nil,
+        MAX_HP = 350,
+        ANIMATION_SPEED = { [0xE7] = 1.00, [0x02] = 1.00 },
+        OVERALL_SPEED = 2,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
     ["Darkside"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
@@ -169,6 +171,15 @@ local INTERNAL_CONFIG = {
         GLOBAL_MULTIPLIER = 1.00,
         ALLOW_CONFIRMED_TARGET_FALLBACK = false,
         LOG_OBSERVED_ANIMATIONS = true,
+        SCALE_WORLD_MOVEMENT = true,
+        -- Enemy actor transforms keep synchronized X/Z positions at these
+        -- three verified offsets. The same extra displacement is added to
+        -- each copy so collision, rendering, and the actor root remain in
+        -- agreement.
+        POSITION_VECTOR_OFFSETS = { 0x10, 0x50, 0x100 },
+        -- Larger one-frame movement is treated as a warp/scene correction and
+        -- becomes a new baseline instead of being multiplied.
+        MAX_HORIZONTAL_DELTA_PER_TICK = 250.0,
     },
 
     MUSIC_DEFAULTS = {
@@ -216,7 +227,7 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KH1FM_All_Enemy_Stats_Speed_Themes_v2_Stats_Report.txt",
+        "KH1FM_All_Enemy_Stats_Speed_Themes_v2_1_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
         "KH1FM_All_Enemy_Stats_Speed_Themes_v2_Music_Report.txt",
 
@@ -1409,6 +1420,40 @@ local function buildProfileLookups()
         return false,
             "ALLOW_CONFIRMED_TARGET_FALLBACK must be true or false"
     end
+    if type(
+        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.SCALE_WORLD_MOVEMENT
+    ) ~= "boolean" then
+        return false, "SCALE_WORLD_MOVEMENT must be true or false"
+    end
+    if type(
+        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.POSITION_VECTOR_OFFSETS
+    ) ~= "table"
+        or #SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .POSITION_VECTOR_OFFSETS == 0
+    then
+        return false, "POSITION_VECTOR_OFFSETS must not be empty"
+    end
+    for _, offset in ipairs(
+        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.POSITION_VECTOR_OFFSETS
+    ) do
+        if type(offset) ~= "number"
+            or offset < 0
+            or offset ~= math.floor(offset)
+        then
+            return false,
+                "POSITION_VECTOR_OFFSETS contains an invalid offset"
+        end
+    end
+    if type(
+        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .MAX_HORIZONTAL_DELTA_PER_TICK
+    ) ~= "number"
+        or SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .MAX_HORIZONTAL_DELTA_PER_TICK <= 0
+    then
+        return false,
+            "MAX_HORIZONTAL_DELTA_PER_TICK must be greater than zero"
+    end
 
     local fallback = SETTINGS.CONFIRMED_TARGET_FALLBACK
     if type(fallback) ~= "table" then
@@ -2405,6 +2450,12 @@ local function registerCandidate(address, source, isConfirmedTarget)
         if wrapperChanged then
             existing.speedWriteDisabled = false
             existing.speedActiveKey = nil
+            existing.movementWriteDisabled = false
+            existing.movementActiveKey = nil
+            existing.movementLastObject = nil
+            existing.movementLastX = nil
+            existing.movementLastZ = nil
+            existing.movementWarpLogged = nil
         end
         if wrapperChanged
             or (
@@ -2554,6 +2605,12 @@ local function registerCandidate(address, source, isConfirmedTarget)
     entity.appliedMaxHp = nil
     entity.speedWriteDisabled = false
     entity.speedActiveKey = nil
+    entity.movementWriteDisabled = false
+    entity.movementActiveKey = nil
+    entity.movementLastObject = nil
+    entity.movementLastX = nil
+    entity.movementLastZ = nil
+    entity.movementWarpLogged = nil
 
     candidates[key] = entity
     candidateOrder[#candidateOrder + 1] = key
@@ -2844,9 +2901,198 @@ local function observeAndApplySafeAnimationSpeed(candidate)
     end
 end
 
+function SETTINGS._validMovementCoordinate(value)
+    return type(value) == "number"
+        and value == value
+        and math.abs(value) <= 10000000.0
+end
+
+function SETTINGS._resetMovementBaseline(candidate, x, z)
+    candidate.movementLastObject = candidate.object
+    candidate.movementLastX = x
+    candidate.movementLastZ = z
+    candidate.movementActiveKey = nil
+end
+
+function SETTINGS._applySafeMovementSpeed(candidate)
+    if candidate == nil
+        or candidate.profile == nil
+        or not candidate.confirmedCombatTarget
+        or candidate.profile.enabled == false
+        or candidate.hp == nil
+        or candidate.hp == 0
+        or not candidateObjectStillMatches(candidate)
+        or SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.ENABLE ~= true
+        or SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .SCALE_WORLD_MOVEMENT ~= true
+    then
+        return
+    end
+
+    local animation = safeReadByte(
+        candidate.object + ENTITY_CURRENT_ANIMATION_OFFSET,
+        true
+    )
+    if animation == nil then
+        return
+    end
+
+    local transforms = {}
+    for _, offset in ipairs(
+        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.POSITION_VECTOR_OFFSETS
+    ) do
+        local x = safeReadFloat(candidate.object + offset, true)
+        local z = safeReadFloat(candidate.object + offset + 8, true)
+        if not SETTINGS._validMovementCoordinate(x)
+            or not SETTINGS._validMovementCoordinate(z)
+        then
+            SETTINGS._resetMovementBaseline(candidate, nil, nil)
+            return
+        end
+        transforms[#transforms + 1] = {
+            offset = offset,
+            x = x,
+            z = z,
+        }
+    end
+
+    local primary = transforms[1]
+    if primary == nil then
+        return
+    end
+    if candidate.movementLastObject ~= candidate.object
+        or candidate.movementLastX == nil
+        or candidate.movementLastZ == nil
+    then
+        SETTINGS._resetMovementBaseline(
+            candidate,
+            primary.x,
+            primary.z
+        )
+        return
+    end
+
+    local deltaX = primary.x - candidate.movementLastX
+    local deltaZ = primary.z - candidate.movementLastZ
+    candidate.movementLastObject = candidate.object
+    candidate.movementLastX = primary.x
+    candidate.movementLastZ = primary.z
+
+    local profile = candidate.profile
+    local namedProfile = not candidate.isConfirmedTargetFallback
+        and not profile.is_confirmed_target_fallback
+    local fallbackProfileAllowed = not namedProfile
+        and profile.is_confirmed_target_fallback == true
+        and SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .ALLOW_CONFIRMED_TARGET_FALLBACK == true
+    local multiplier, speedMode =
+        profileSpeedMultiplier(profile, animation)
+    if not (namedProfile or fallbackProfileAllowed)
+        or multiplier == nil
+        or math.abs(multiplier - 1.0) <= 0.0001
+    then
+        candidate.movementActiveKey = nil
+        return
+    end
+    if candidate.movementWriteDisabled then
+        return
+    end
+
+    local maxDelta = SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+        .MAX_HORIZONTAL_DELTA_PER_TICK
+    local distanceSquared = deltaX * deltaX + deltaZ * deltaZ
+    if distanceSquared > maxDelta * maxDelta then
+        if not candidate.movementWarpLogged then
+            candidate.movementWarpLogged = true
+            record(string.format(
+                "SAFE MOVEMENT WARP REJECTED tick=%d enemy=%s "
+                    .. "animation=0x%02X delta_x=%.3f delta_z=%.3f "
+                    .. "limit=%.3f",
+                tick,
+                profile.name,
+                animation,
+                deltaX,
+                deltaZ,
+                maxDelta
+            ), true)
+        end
+        return
+    end
+
+    local extraX = deltaX * (multiplier - 1.0)
+    local extraZ = deltaZ * (multiplier - 1.0)
+    if math.abs(extraX) <= 0.000001
+        and math.abs(extraZ) <= 0.000001
+    then
+        return
+    end
+
+    for _, transform in ipairs(transforms) do
+        local xWritten, xReason = safeWriteFloat(
+            candidate.object + transform.offset,
+            transform.x + extraX,
+            true
+        )
+        local zWritten = false
+        local zReason = "X write failed"
+        if xWritten then
+            zWritten, zReason = safeWriteFloat(
+                candidate.object + transform.offset + 8,
+                transform.z + extraZ,
+                true
+            )
+        end
+        if not xWritten or not zWritten then
+            candidate.movementWriteDisabled = true
+            record(string.format(
+                "SAFE MOVEMENT DISABLED tick=%d enemy=%s "
+                    .. "animation=0x%02X object=%s offset=0x%X "
+                    .. "reason=%s",
+                tick,
+                profile.name,
+                animation,
+                pointerText(candidate.object),
+                transform.offset,
+                tostring(xWritten and zReason or xReason)
+            ), true)
+            return
+        end
+    end
+
+    candidate.movementLastX = primary.x + extraX
+    candidate.movementLastZ = primary.z + extraZ
+    local activeKey = string.format(
+        "%s:%02X:%.3f:%s",
+        profile.name,
+        animation,
+        multiplier,
+        speedMode
+    )
+    if candidate.movementActiveKey ~= activeKey then
+        candidate.movementActiveKey = activeKey
+        record(string.format(
+            "SAFE MOVEMENT ACTIVE tick=%d enemy=%s "
+                .. "animation=0x%02X multiplier=%.3f mode=%s "
+                .. "delta_x=%.3f delta_z=%.3f "
+                .. "scaled_delta_x=%.3f scaled_delta_z=%.3f",
+            tick,
+            profile.name,
+            animation,
+            multiplier,
+            speedMode,
+            deltaX,
+            deltaZ,
+            deltaX + extraX,
+            deltaZ + extraZ
+        ), true)
+    end
+end
+
 local function updateSafeAnimationSpeeds()
     for _, key in ipairs(candidateOrder) do
-        observeAndApplySafeAnimationSpeed(candidates[key])
+        local candidate = candidates[key]
+        observeAndApplySafeAnimationSpeed(candidate)
+        SETTINGS._applySafeMovementSpeed(candidate)
     end
 end
 
@@ -3539,7 +3785,7 @@ function SETTINGS._combinedStatsInit()
     lastOverflowCount = -1
     damageRouteLogKey = nil
 
-    record("KH1FM All Enemy Stats + Speed + Themes v2 / Stats report", false)
+    record("KH1FM All Enemy Stats + Speed + Themes v2.1 / Stats report", false)
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
     record(string.format(
         "Global settings: max_hp=%s HP_multiplier=%.3f "
@@ -3564,9 +3810,15 @@ function SETTINGS._combinedStatsInit()
         tostring(SETTINGS.ENABLE_CONFIRMED_TARGET_FALLBACK)
     ), false)
     record(string.format(
-        "Configured animation speed engine: enabled=%s native_default=%.3f "
-            .. "allow_unidentified=%s max=10.000 motion_logging=%s",
+        "Configured speed engine: animation_enabled=%s "
+            .. "world_movement_enabled=%s native_default=%.3f "
+            .. "allow_unidentified=%s max=10.000 motion_logging=%s "
+            .. "movement_axis=X/Z warp_limit=%.3f transform_copies=%u",
         tostring(SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.ENABLE),
+        tostring(
+            SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+                .SCALE_WORLD_MOVEMENT
+        ),
         SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.GLOBAL_MULTIPLIER,
         tostring(
             SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
@@ -3574,7 +3826,11 @@ function SETTINGS._combinedStatsInit()
         ),
         tostring(
             SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.LOG_OBSERVED_ANIMATIONS
-        )
+        ),
+        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .MAX_HORIZONTAL_DELTA_PER_TICK,
+        #SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
+            .POSITION_VECTOR_OFFSETS
     ), false)
 
     if not SETTINGS.ENABLE then
@@ -3644,8 +3900,8 @@ function SETTINGS._combinedStatsInit()
             and (
                 SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
                     .ALLOW_CONFIRMED_TARGET_FALLBACK
-                and "Configured per-animation/overall speed is active for named and explicitly enabled fallback targets."
-                or "Configured per-animation/overall speed is active for named targets; unidentified targets remain native."
+                and "Configured per-animation/overall speed scales animation and X/Z world movement for named and explicitly enabled fallback targets."
+                or "Configured per-animation/overall speed scales animation and X/Z world movement for named targets; unidentified targets remain native."
             )
             or "Experimental speed is read-only; ENEMY MOTION OBSERVED lines perform no writes.",
         true
@@ -6658,7 +6914,6 @@ function SETTINGS._combinedMusicFrame()
     end
 
     SETTINGS._processNarrowTargets()
-    SETTINGS._processGraph()
     SETTINGS._updatePresenceAndRoute()
     if not enabled then
         return
@@ -6698,6 +6953,8 @@ local SETTINGS = {
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
     PRIMARY_BGM_ID = 1,
     FIRST_PRIVATE_MUSIC_ID = 900,
+    REQUIRE_VERIFIED_SORA_TARGET = true,
+    MAX_PLAUSIBLE_THEME_HP = 1000000,
 
     THEMES = {},
     THEME_ORDER = {},
@@ -6709,7 +6966,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_3_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_4_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -7213,7 +7470,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.3:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.4:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7239,7 +7496,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.3 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.4 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
@@ -7249,6 +7506,10 @@ local function buildReport()
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
         "Valid theme rows: " .. tostring(SETTINGS.VALID_THEME_COUNT),
+        "Selection gate: verified live Sora+0x74 target only; "
+            .. "graph/model-only evidence is ignored for theme activation.",
+        "Maximum plausible theme-target HP: "
+            .. tostring(SETTINGS.MAX_PLAUSIBLE_THEME_HP),
         "Presence hold ticks: " .. tostring(SETTINGS.PRESENCE_HOLD_TICKS),
         "Fade-out milliseconds: " .. tostring(SETTINGS.FADE_OUT_MS),
         "",
@@ -8402,6 +8663,14 @@ local function contextTheme(maxHp, fingerprint)
 end
 
 local function examineEntity(object, source)
+    if SETTINGS.REQUIRE_VERIFIED_SORA_TARGET
+        and (
+            type(source) ~= "string"
+            or string.find(source, "Sora+0x74", 1, true) == nil
+        )
+    then
+        return
+    end
     if not plausibleRuntimeAddress(object) or object == currentSora then
         return
     end
@@ -8424,6 +8693,7 @@ local function examineEntity(object, source)
         or maxHp == 0
         or hp > maxHp
         or maxHp > MAX_HP_STORAGE_VALUE
+        or maxHp > SETTINGS.MAX_PLAUSIBLE_THEME_HP
     then
         return
     end
@@ -9637,6 +9907,11 @@ function SETTINGS._privateThemeInit()
             .. "use the enemy name as a stable tie-breaker.",
         false
     )
+    addStatus(
+        "Target gate: themes accept only the verified live Sora+0x74 "
+            .. "target. Model-graph sightings cannot start music.",
+        false
+    )
     if not SETTINGS.ENABLE then
         addStatus("DISABLED: SETTINGS.ENABLE is false.", true)
         saveReport()
@@ -9650,6 +9925,18 @@ function SETTINGS._privateThemeInit()
         addStatus(
             "DISABLED: PRIVATE_THEME_FADE_OUT_MS must be an integer "
                 .. "from 1 through 10000.",
+            true
+        )
+        saveReport()
+        return
+    end
+    if type(SETTINGS.REQUIRE_VERIFIED_SORA_TARGET) ~= "boolean"
+        or type(SETTINGS.MAX_PLAUSIBLE_THEME_HP) ~= "number"
+        or SETTINGS.MAX_PLAUSIBLE_THEME_HP < 1
+        or SETTINGS.MAX_PLAUSIBLE_THEME_HP > MAX_HP_STORAGE_VALUE
+    then
+        addStatus(
+            "DISABLED: private-theme target-gate settings are invalid.",
             true
         )
         saveReport()
@@ -9876,7 +10163,6 @@ function SETTINGS._privateThemeFrame()
     end
 
     SETTINGS._processNarrowTargets()
-    SETTINGS._processGraph()
     SETTINGS._updatePresenceAndRoute()
     if not enabled then
         return
