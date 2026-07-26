@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.1.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.2.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -6707,7 +6707,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_1_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_2_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -6988,6 +6988,32 @@ local CACHE_RELOCATIONS = {
     { field = 0x112, next = 0x116,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
+
+-- Stage 4 stops temporary slot-1 playback when the configured enemy is no
+-- longer present. It deliberately does not unregister the private resource or
+-- free its native buffer, so the existing crash-safe cache path remains valid
+-- for later encounters.
+local STOP_CODE_HEX =
+    "514883ec40833d00000000047529c7050000000000000000c605000000000a"
+    .. "b901000000e800000000f0ff0500000000c605000000000b4883c44059ff25"
+    .. "00000000"
+local STOP_CODE_SIZE = 0x042
+local STOP_RELOCATIONS = {
+    { field = 0x007, next = 0x00C,
+        data = DATA_DISPATCH_COMMAND_OFFSET },
+    { field = 0x010, next = 0x018,
+        data = DATA_DISPATCH_COMMAND_OFFSET },
+    { field = 0x01A, next = 0x01F,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x025, next = 0x029,
+        absolute = BGM_STOP_FUNCTION_RVA },
+    { field = 0x02C, next = 0x030,
+        data = DATA_DISPATCH_COUNTER_OFFSET },
+    { field = 0x032, next = 0x037,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x03E, next = 0x042,
+        data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
+}
 local FRAME_CODE_CAPACITY = REGISTER_CODE_SIZE
 local FRAME_CODE_PREFIX = {
     0x51, 0x48, 0x83, 0xEC, 0x40,
@@ -7028,6 +7054,7 @@ local playbackActive = false
 local pendingTheme = nil
 local pendingMode = nil
 local activeSwitchQueued = false
+local stopRequested = false
 
 local graphQueue = {}
 local graphQueueHead = 1
@@ -7043,6 +7070,7 @@ local lastLoadSize = 0
 local lastLoadBuffer = 0
 local lastTargetResource = 0
 local totalActiveSwitches = 0
+local totalPrivateStops = 0
 local totalCachedBytes = 0
 local timelineRows = {}
 local timelineCapped = false
@@ -7058,7 +7086,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.1:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.2:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7084,11 +7112,12 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.1 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.2 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
-            .. "and played temporarily on BGM slot 1.",
+            .. "played temporarily on BGM slot 1, and stopped after the "
+            .. "configured enemy leaves the encounter.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -7129,6 +7158,10 @@ local function buildReport()
     lines[#lines + 1] = string.format(
         "On-demand BGM switches completed: %u",
         totalActiveSwitches
+    )
+    lines[#lines + 1] = string.format(
+        "Private BGM stops completed: %u",
+        totalPrivateStops
     )
     lines[#lines + 1] = string.format(
         "Cached native audio bytes: %u",
@@ -7828,6 +7861,24 @@ function SETTINGS._installCacheStage()
         return false, "cached-play stage install failed: " .. reason
     end
     SETTINGS._frameStage = "cache"
+    return true
+end
+
+function SETTINGS._installStopStage()
+    local frameCode, reason = buildFrameCode(
+        STOP_CODE_HEX,
+        STOP_CODE_SIZE,
+        STOP_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    local ok
+    ok, reason = writeArrayChecked(frameCodeRva, frameCode)
+    if not ok then
+        return false, "private-stop stage install failed: " .. reason
+    end
+    SETTINGS._frameStage = "stop"
     return true
 end
 
@@ -8614,6 +8665,69 @@ function SETTINGS._queueThemeSwitch(theme)
     ), true)
 end
 
+function SETTINGS._queueThemeStop(theme, reasonText)
+    if pendingTheme ~= nil or activeSwitchQueued then
+        return
+    end
+    if theme == nil then
+        stopRequested = false
+        currentTheme = nil
+        playbackActive = false
+        return
+    end
+
+    local ok
+    local reason
+    ok, reason = SETTINGS._installStopStage()
+    if not ok then
+        enabled = false
+        addStatus(
+            "DISABLED: private-stop stage install failed for "
+                .. theme.name .. ": " .. tostring(reason) .. ".",
+            true
+        )
+        saveReport()
+        return
+    end
+
+    pendingTheme = theme
+    pendingMode = "stop"
+    activeSwitchQueued = true
+    ok, reason = writeIntChecked(
+        dataRva + DATA_DISPATCH_STATUS_OFFSET,
+        0
+    )
+    if ok then
+        ok, reason = writeIntChecked(
+            dataRva + DATA_DISPATCH_COMMAND_OFFSET,
+            4
+        )
+    end
+    if not ok then
+        pendingTheme = nil
+        pendingMode = nil
+        activeSwitchQueued = false
+        enabled = false
+        addStatus(
+            "DISABLED: private-stop request failed for "
+                .. theme.name .. ": " .. tostring(reason) .. ".",
+            true
+        )
+        saveReport()
+        return
+    end
+
+    addTimeline(string.format(
+        "PRIVATE THEME STOP QUEUED tick=%u seconds=%.3f "
+            .. "enemy=%s slot=%u reason=%s",
+        tick,
+        tick / 60,
+        theme.name,
+        SETTINGS.PRIMARY_BGM_ID,
+        tostring(reasonText or "enemy no longer present")
+    ), true)
+end
+
 function SETTINGS._selectActiveThemeEvidence()
     local best = nil
     for _, item in pairs(evidence) do
@@ -8646,12 +8760,34 @@ function SETTINGS._updatePresenceAndRoute()
                 activeEnemy
             ), true)
         end
+        if pendingMode ~= "stop"
+            and (
+                playbackActive
+                or currentTheme ~= nil
+                or pendingTheme ~= nil
+            )
+        then
+            stopRequested = true
+        end
         activeEnemy = nil
         activeTheme = nil
-        playbackActive = false
+        if stopRequested and pendingTheme == nil then
+            if currentTheme ~= nil then
+                SETTINGS._queueThemeStop(
+                    currentTheme,
+                    "presence timeout or scene change"
+                )
+            else
+                stopRequested = false
+                playbackActive = false
+            end
+        end
         return
     end
 
+    if pendingMode ~= "stop" then
+        stopRequested = false
+    end
     if activeEnemy ~= selected.profile.name then
         activeEnemy = selected.profile.name
         activeTheme = selected.profile
@@ -8702,6 +8838,7 @@ function SETTINGS._failPrivateTheme(reason)
     pendingTheme = nil
     pendingMode = nil
     activeSwitchQueued = false
+    stopRequested = false
     playbackActive = false
     addTimeline(string.format(
         "PRIVATE THEME FAILED tick=%u seconds=%.3f enemy=%s "
@@ -8950,6 +9087,15 @@ function SETTINGS._processDispatchCounter()
                 lastLoadBuffer,
                 lastTargetResource
             ), true)
+        elseif status == 10 then
+            addTimeline(string.format(
+                "PRIVATE BGM STOP ENTERED tick=%u seconds=%.3f "
+                    .. "enemy=%s slot=%u",
+                tick,
+                tick / 60,
+                pendingTheme ~= nil and pendingTheme.name or "none",
+                SETTINGS.PRIMARY_BGM_ID
+            ), false)
         end
     end
 
@@ -8960,10 +9106,32 @@ function SETTINGS._processDispatchCounter()
     end
     local delta = counterDelta(current, lastDispatchCounter)
     lastDispatchCounter = current
-    totalActiveSwitches = totalActiveSwitches + delta
 
     local completed = pendingTheme
     local completedMode = pendingMode
+    if completedMode == "stop" then
+        totalPrivateStops = totalPrivateStops + delta
+        currentTheme = nil
+        playbackActive = false
+        stopRequested = false
+        pendingTheme = nil
+        pendingMode = nil
+        activeSwitchQueued = false
+        addTimeline(string.format(
+            "PRIVATE THEME STOPPED tick=%u seconds=%.3f "
+                .. "enemy=%s slot=%u count=%u total=%u "
+                .. "cache_retained=true",
+            tick,
+            tick / 60,
+            completed ~= nil and completed.name or "none",
+            SETTINGS.PRIMARY_BGM_ID,
+            delta,
+            totalPrivateStops
+        ), true)
+        return
+    end
+
+    totalActiveSwitches = totalActiveSwitches + delta
     if completed ~= nil then
         if completedMode == "load" and not completed.loaded then
             completed.loaded = true
@@ -9179,6 +9347,7 @@ function SETTINGS._resetPrivateThemeState()
     pendingTheme = nil
     pendingMode = nil
     activeSwitchQueued = false
+    stopRequested = false
     graphQueue = {}
     graphQueueHead = 1
     graphQueued = {}
@@ -9193,6 +9362,7 @@ function SETTINGS._resetPrivateThemeState()
     lastLoadBuffer = 0
     lastTargetResource = 0
     totalActiveSwitches = 0
+    totalPrivateStops = 0
     totalCachedBytes = 0
     timelineRows = {}
     timelineCapped = false
@@ -9208,7 +9378,8 @@ function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
         "Route: every configured enemy selects its own private SCD on "
-            .. "temporary BGM slot 1 playback.",
+            .. "temporary BGM slot 1 playback; the slot is stopped after "
+            .. "that enemy leaves the encounter.",
         false
     )
     addStatus(
@@ -9379,7 +9550,8 @@ function SETTINGS._privateThemeInit()
         "Fight a configured enemy. F2 should show ENEMY PRESENT, "
             .. "ROUTE ARMED, NATIVE BUFFER READY, "
             .. "PRIVATE SCD COPY VERIFIED, then ACTIVE SWITCH EXECUTED "
-            .. "on slot 1. Use a full game restart instead of F1.",
+            .. "on slot 1. After defeat it should show PRIVATE THEME "
+            .. "STOPPED. Use a full game restart instead of F1.",
         true
     )
     saveReport()
@@ -9426,9 +9598,6 @@ function SETTINGS._privateThemeFrame()
     end
     if world ~= lastWorld or room ~= lastRoom then
         evidence = {}
-        activeEnemy = nil
-        activeTheme = nil
-        playbackActive = false
         lastWorld = world
         lastRoom = room
         SETTINGS._restartGraph()
