@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.1.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -6707,7 +6707,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_1_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -6747,6 +6747,12 @@ local FILE_MANAGER_UNLOCK_RVA = 0x000E42A0
 local FILE_MANAGER_UNLOCK_SIGNATURE = {
     0x48, 0x83, 0xEC, 0x28, 0x48, 0x8B, 0x49, 0x18,
 }
+-- register_bgm_resource inserts each live BGM node at the head of this list.
+-- Cached reactivation safely moves the selected existing node back to the
+-- head under the same file-manager lock instead of registering its buffer a
+-- second time.
+local BGM_RESOURCE_LIST_HEAD_RVA = 0x004D65D8
+local BGM_RESOURCE_LIST_TAIL_RVA = 0x004D65E0
 -- KH1's original LoadFileWithMalloc implementation calls the imported
 -- 16-byte-aligned allocator and matching free function at these IAT entries.
 -- The call-site signatures prevent using them on an unsupported executable.
@@ -6911,6 +6917,77 @@ local REGISTER_RELOCATIONS = {
     { field = 0x117, next = 0x11B,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
+
+-- Stage 3 never calls register_bgm_resource. It finds the already-owned node
+-- by its saved resource ID and exact owned buffer, moves that node to the head
+-- of the slot-1 list, and invokes the native BGM route. This fixes v4.4's
+-- duplicate-registration use-after-free crash on a configured enemy's second
+-- encounter.
+local CACHE_CODE_HEX =
+    "514883ec40833d00000000030f85f9000000c7050000000000000000c60500"
+    .. "00000004488b0d000000004885c90f8489000000e800000000448b15000000"
+    .. "004c8b1d000000004c8b05000000004531c94d85c074524539501875064d39"
+    .. "582074094d89c14d8b4008ebe64d85c9742a498b4008498941084c39050000"
+    .. "000075074c890d00000000488b0500000000498940084c890500000000488b"
+    .. "0d00000000e800000000eb1e488b0d00000000e800000000c6050000000009"
+    .. "eb4fc6050000000005eb46b901000000e800000000b9010000004531c0448b"
+    .. "0d00000000f30f100d00000000f30f1015000000004c894424204c89442428"
+    .. "e800000000f0ff0500000000c60500000000074883c44059ff2500000000"
+local CACHE_CODE_SIZE = 0x116
+local CACHE_RELOCATIONS = {
+    { field = 0x007, next = 0x00C,
+        data = DATA_DISPATCH_COMMAND_OFFSET },
+    { field = 0x014, next = 0x01C,
+        data = DATA_DISPATCH_COMMAND_OFFSET },
+    { field = 0x01E, next = 0x023,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x026, next = 0x02A,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x034, next = 0x038,
+        absolute = FILE_MANAGER_LOCK_RVA },
+    { field = 0x03B, next = 0x03F,
+        data = DATA_TARGET_RESOURCE_OFFSET },
+    { field = 0x042, next = 0x046,
+        data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x049, next = 0x04D,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x07A, next = 0x07E,
+        absolute = BGM_RESOURCE_LIST_TAIL_RVA },
+    { field = 0x083, next = 0x087,
+        absolute = BGM_RESOURCE_LIST_TAIL_RVA },
+    { field = 0x08A, next = 0x08E,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x095, next = 0x099,
+        absolute = BGM_RESOURCE_LIST_HEAD_RVA },
+    { field = 0x09C, next = 0x0A0,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x0A1, next = 0x0A5,
+        absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x0AA, next = 0x0AE,
+        absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x0AF, next = 0x0B3,
+        absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x0B5, next = 0x0BA,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x0BE, next = 0x0C3,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x0CB, next = 0x0CF,
+        absolute = BGM_STOP_FUNCTION_RVA },
+    { field = 0x0DA, next = 0x0DE,
+        data = DATA_DISPATCH_TIME_OFFSET },
+    { field = 0x0E2, next = 0x0E6,
+        data = DATA_DISPATCH_VOLUME_BITS_OFFSET },
+    { field = 0x0EA, next = 0x0EE,
+        data = DATA_DISPATCH_FADE_BITS_OFFSET },
+    { field = 0x0F9, next = 0x0FD,
+        absolute = BGM_FUNCTION_RVA },
+    { field = 0x100, next = 0x104,
+        data = DATA_DISPATCH_COUNTER_OFFSET },
+    { field = 0x106, next = 0x10B,
+        data = DATA_DISPATCH_STATUS_OFFSET },
+    { field = 0x112, next = 0x116,
+        data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
+}
 local FRAME_CODE_CAPACITY = REGISTER_CODE_SIZE
 local FRAME_CODE_PREFIX = {
     0x51, 0x48, 0x83, 0xEC, 0x40,
@@ -6981,7 +7058,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.1:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7007,7 +7084,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.1 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
@@ -7736,6 +7813,24 @@ function SETTINGS._installRegisterStage()
     return true
 end
 
+function SETTINGS._installCacheStage()
+    local frameCode, reason = buildFrameCode(
+        CACHE_CODE_HEX,
+        CACHE_CODE_SIZE,
+        CACHE_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    local ok
+    ok, reason = writeArrayChecked(frameCodeRva, frameCode)
+    if not ok then
+        return false, "cached-play stage install failed: " .. reason
+    end
+    SETTINGS._frameStage = "cache"
+    return true
+end
+
 local function activateFrameDispatcher()
     local frameOK, frameReason = resolveFrameHookTarget()
     if not frameOK then
@@ -8348,7 +8443,7 @@ local function fixedStringBytes(capacity, value)
     return bytes
 end
 
-function SETTINGS._publishThemeFields(theme, buffer)
+function SETTINGS._publishThemeFields(theme, buffer, resource)
     local writes = {
         {
             kind = "array",
@@ -8377,7 +8472,7 @@ function SETTINGS._publishThemeFields(theme, buffer)
         {
             kind = "int",
             offset = DATA_TARGET_RESOURCE_OFFSET,
-            value = 0,
+            value = resource or 0,
             name = "target resource",
         },
         {
@@ -8442,10 +8537,12 @@ function SETTINGS._queueThemeSwitch(theme)
 
     local useCache = theme.loaded
         and plausibleRuntimeAddress(theme.buffer)
+        and type(theme.resource) == "number"
+        and theme.resource ~= 0
     local ok
     local reason
     if useCache then
-        ok, reason = SETTINGS._installRegisterStage()
+        ok, reason = SETTINGS._installCacheStage()
     else
         theme.loaded = false
         theme.buffer = nil
@@ -8465,7 +8562,8 @@ function SETTINGS._queueThemeSwitch(theme)
 
     ok, reason = SETTINGS._publishThemeFields(
         theme,
-        useCache and theme.buffer or 0
+        useCache and theme.buffer or 0,
+        useCache and theme.resource or 0
     )
     if not ok then
         enabled = false
@@ -8486,7 +8584,7 @@ function SETTINGS._queueThemeSwitch(theme)
 
     ok, reason = writeIntChecked(
         dataRva + DATA_DISPATCH_COMMAND_OFFSET,
-        useCache and 2 or 1
+        useCache and 3 or 1
     )
     if not ok then
         pendingTheme = nil
@@ -8788,6 +8886,28 @@ function SETTINGS._processDispatchCounter()
                 tick,
                 tick / 60
             ), false)
+        elseif status == 9 then
+            local stale = pendingTheme
+            if stale ~= nil then
+                stale.loaded = false
+                stale.buffer = nil
+                stale.resource = nil
+                totalCachedBytes = math.max(
+                    0,
+                    totalCachedBytes - stale.size
+                )
+            end
+            pendingTheme = nil
+            pendingMode = nil
+            activeSwitchQueued = false
+            playbackActive = false
+            addTimeline(string.format(
+                "CACHED RESOURCE MISSING tick=%u seconds=%.3f "
+                    .. "enemy=%s; SAFE FRESH LOAD WILL BE QUEUED",
+                tick,
+                tick / 60,
+                stale ~= nil and stale.name or "none"
+            ), true)
         elseif status == 3 or status == 5
             or status == 6 or status == 8
         then

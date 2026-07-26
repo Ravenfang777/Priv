@@ -1,6 +1,6 @@
-title: KHFM Enemy Config v4.4 Multi-Theme
+title: KHFM Enemy Config v4.4.1 Multi-Theme
 originalAuthor: Raven Fang
-description: One Lua controller for per-enemy HP, speed, and private battle themes. No native music asset is replaced.
+description: Crash-safe cached private themes plus per-enemy HP and speed. No native music asset is replaced.
 assets:
 - name: scripts/KHFM_EnemyConfig.lua
   method: copy
