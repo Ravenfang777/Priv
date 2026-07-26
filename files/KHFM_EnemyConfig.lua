@@ -84,11 +84,11 @@ local ENEMY_SETTINGS = {
     ["Battleship"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku - Wooden Sword"] = { MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
     ["Tidus"] = { MAX_HP = 350, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
-    ["Selphie"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
+    ["Selphie"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.4, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
     ["Wakka"] = {
         MAX_HP = 350,
         ANIMATION_SPEED = { [0xE7] = 1.00, [0x02] = 1.00 },
-        OVERALL_SPEED = 2,
+        OVERALL_SPEED = 1.3,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
     ["Darkside"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
