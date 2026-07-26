@@ -88,17 +88,17 @@ local ENEMY_SETTINGS = {
         OVERALL_SPEED = 1.3,
         BATTLE_THEME = "KHFM_RowdyRumbleTheme.win32.scd" },
     ["Tidus"] = {
-        MAX_HP = 200,
+        MAX_HP = 240,
         ANIMATION_SPEED = {},
         OVERALL_SPEED = 1.4,
         BATTLE_THEME = "KHFM_TidusTheme.win32.scd" },
     ["Selphie"] = { 
-        MAX_HP = 160, 
+        MAX_HP = 200, 
         ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 1.60, [0x02] = 1.60, [0xED] = 1.60, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 2.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 1.50, [0xF6] = 2.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, 
         OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
     ["Wakka"] = {
-        MAX_HP = 200,
+        MAX_HP = 220,
         ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0x02] = 2.00, [0x06] = 4.00, [0x07] = 4.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 4.00, [0xF5] = 5.00, [0xF6] = 5.00, [0xF7] = 1.50 },
         OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
