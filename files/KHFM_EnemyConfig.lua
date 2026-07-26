@@ -83,10 +83,10 @@ local ENEMY_SETTINGS = {
     ["Chimera"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Battleship"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku - Wooden Sword"] = { MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
-    ["Tidus"] = { MAX_HP = 350, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
-    ["Selphie"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.4, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
+    ["Tidus"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+    ["Selphie"] = { MAX_HP = 240, ANIMATION_SPEED = { [0x00] = 4.00, [0x01] = 2.00, [0x02] = 2.00, [0xED] = 3.00, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 4.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 3.00, [0xF6] = 3.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, OVERALL_SPEED = nil, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
     ["Wakka"] = {
-        MAX_HP = 350,
+        MAX_HP = 300,
         ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0x02] = 2.00, [0x06] = 4.00, [0x07] = 4.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 4.00, [0xF5] = 5.00, [0xF6] = 5.00, [0xF7] = 1.50 },
         OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
