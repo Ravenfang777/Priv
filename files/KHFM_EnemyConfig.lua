@@ -479,7 +479,14 @@ local INTERNAL_CONFIG = {
         ["Tidus"] = {
             model_codes = { "xa_di_1010", "xa_di_1019" },
             fingerprints = {},
-            context_bindings = {},
+            context_bindings = {
+                {
+                    world = 1, room = 0, native_max_hp = 60,
+                    max_hp_values = { 60 },
+                    fingerprint =
+                        "00075B78:00000070:0001C000:0004D690:00B9:0008",
+                },
+},
         },
         ["Selphie"] = {
             source_bgm = "music119.win32.scd",
