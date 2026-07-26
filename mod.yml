@@ -1,16 +1,16 @@
-title: KH1FM Wakka Private Theme v4.2
+title: KHFM Enemy Config v4.4 Multi-Theme
 originalAuthor: Raven Fang
-description: Installs Wakka's enemy configuration and conditionally loads a private battle theme on slot 1. The menu's original music110 is not replaced.
+description: One Lua controller for per-enemy HP, speed, and private battle themes. No native music asset is replaced.
 assets:
 - name: scripts/KHFM_EnemyConfig.lua
   method: copy
   source:
   - name: files/KHFM_EnemyConfig.lua
-- name: scripts/ZZZZ_KHFM_Wakka_PrivateTheme_Loader_v4_2.lua
-  method: copy
-  source:
-  - name: files/ZZZZ_KHFM_Wakka_PrivateTheme_Loader_v4_2.lua
 - name: scripts/KHFM_WakkaTheme.win32.scd
   method: copy
   source:
   - name: files/KHFM_WakkaTheme.win32.scd
+- name: scripts/KHFM_SelphieTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_SelphieTheme.win32.scd
