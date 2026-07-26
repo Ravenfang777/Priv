@@ -1,0 +1,16 @@
+title: KH1FM Wakka Private Theme v4.1
+originalAuthor: Raven Fang
+description: Installs the Wakka configuration, conditional private-theme loader, and private SCD into the rebuilt KH1 scripts directory. No numbered game music is replaced.
+assets:
+- name: scripts/KHFM_EnemyConfig.lua
+  method: copy
+  source:
+  - name: files/KHFM_EnemyConfig.lua
+- name: scripts/ZZZZ_KHFM_Wakka_PrivateTheme_Loader_v4_1.lua
+  method: copy
+  source:
+  - name: files/ZZZZ_KHFM_Wakka_PrivateTheme_Loader_v4_1.lua
+- name: scripts/KHFM_WakkaTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_WakkaTheme.win32.scd
