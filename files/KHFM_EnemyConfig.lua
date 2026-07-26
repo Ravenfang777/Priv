@@ -86,7 +86,7 @@ local ENEMY_SETTINGS = {
         MAX_HP = 450,
         ANIMATION_SPEED = {},
         OVERALL_SPEED = 1.4,
-        BATTLE_THEME = nil },
+        BATTLE_THEME = KHFM_RowdyRumbleTheme.win32.scd },
     ["Tidus"] = {
         MAX_HP = 300,
         ANIMATION_SPEED = {},
@@ -484,6 +484,8 @@ local INTERNAL_CONFIG = {
         -- DESTINY ISLANDS / TRAVERSE TOWN / WONDERLAND
         -- ================================================================
         ["Riku - Wooden Sword"] = {
+            source_bgm = "music119.win32.scd",
+            bgm_slot = 1, music_priority = 100,
             model_codes = { "xa_ex_1010", "xa_ex_1011", "xa_ex_1019" },
             fingerprints = {},
             context_bindings = {
@@ -496,6 +498,8 @@ local INTERNAL_CONFIG = {
 },
         },
         ["Tidus"] = {
+            source_bgm = "music119.win32.scd",
+            bgm_slot = 1, music_priority = 100,
             model_codes = { "xa_di_1010", "xa_di_1019" },
             fingerprints = {},
             context_bindings = {
