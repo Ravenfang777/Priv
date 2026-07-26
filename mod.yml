@@ -14,3 +14,7 @@ assets:
   method: copy
   source:
   - name: files/KHFM_SelphieTheme.win32.scd
+- name: scripts/KHFM_TidusTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_TidusTheme.win32.scd
