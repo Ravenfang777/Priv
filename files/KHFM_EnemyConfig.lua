@@ -82,9 +82,21 @@ local ENEMY_SETTINGS = {
     ["Missile Diver"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Chimera"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Battleship"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Riku - Wooden Sword"] = { MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
-    ["Tidus"] = { MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.4, BATTLE_THEME = "KHFM_TidusTheme.win32.scd" },
-    ["Selphie"] = { MAX_HP = 240, ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 1.60, [0x02] = 1.60, [0xED] = 1.60, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 2.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 1.50, [0xF6] = 2.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, OVERALL_SPEED = nil, BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
+    ["Riku - Wooden Sword"] = {
+        MAX_HP = 450,
+        ANIMATION_SPEED = {},
+        OVERALL_SPEED = 1.4,
+        BATTLE_THEME = nil },
+    ["Tidus"] = {
+        MAX_HP = 300,
+        ANIMATION_SPEED = {},
+        OVERALL_SPEED = 1.4,
+        BATTLE_THEME = "KHFM_TidusTheme.win32.scd" },
+    ["Selphie"] = { 
+        MAX_HP = 240, 
+        ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 1.60, [0x02] = 1.60, [0xED] = 1.60, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 2.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 1.50, [0xF6] = 2.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, 
+        OVERALL_SPEED = nil,
+        BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
     ["Wakka"] = {
         MAX_HP = 300,
         ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0x02] = 2.00, [0x06] = 4.00, [0x07] = 4.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 4.00, [0xF5] = 5.00, [0xF6] = 5.00, [0xF7] = 1.50 },
@@ -474,7 +486,14 @@ local INTERNAL_CONFIG = {
         ["Riku - Wooden Sword"] = {
             model_codes = { "xa_ex_1010", "xa_ex_1011", "xa_ex_1019" },
             fingerprints = {},
-            context_bindings = {},
+            context_bindings = {
+                {
+                    world = 1, room = 0, native_max_hp = 90,
+                    max_hp_values = { 90 },
+                    fingerprint =
+                        "0007A8F8:00000070:0001C000:0004E450:00E3:0007",
+                },
+},
         },
         ["Tidus"] = {
             model_codes = { "xa_di_1010", "xa_di_1019" },
