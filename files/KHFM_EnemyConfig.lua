@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.6.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.7.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -32,7 +32,8 @@ LUAGUI_DESC = "Per-enemy HP, speed, and private battle themes without native mus
 -- OVERALL_SPEED   Animation + world-movement speed for all other animations.
 --                 Avoid on projectile users.
 -- BATTLE_THEME    Private .win32.scd filename beside this Lua.
---                 nil keeps the game's native music for that enemy.
+--                 nil starts no new private theme. If another enemy's
+--                 private theme is already playing, lock-on preserves it.
 --
 -- Wakka contains the verified example. Every named row is addressable.
 
@@ -159,7 +160,7 @@ local ENEMY_SETTINGS = {
     },
     ["Leon"] = {
         MAX_HP = 999,
-        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
+        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 2.00, [0x07] = 2.00, [0x49] = 2.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 2.00, },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
@@ -7199,7 +7200,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_6_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_7_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -7683,6 +7684,11 @@ local pendingTheme = nil
 local pendingMode = nil
 local activeSwitchQueued = false
 local stopRequested = false
+SETTINGS._unthemedTargetTick = -100000
+SETTINGS._unthemedTargetObject = 0
+SETTINGS._lastPreservedTargetObject = 0
+SETTINGS._sceneChangedThisTick = false
+SETTINGS._forceFadeAfterSceneChange = false
 
 local graphQueue = {}
 local graphQueueHead = 1
@@ -7715,7 +7721,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.6:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.7:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7741,7 +7747,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.6 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.7 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
@@ -7753,6 +7759,9 @@ local function buildReport()
         "Valid theme rows: " .. tostring(SETTINGS.VALID_THEME_COUNT),
         "Selection gate: verified live Sora+0x74 target only; "
             .. "graph/model-only evidence is ignored for theme activation.",
+        "Unthemed-target behavior: a verified lock-on target with no valid "
+            .. "BATTLE_THEME preserves the private theme already playing "
+            .. "until the target is lost or the scene changes.",
         "Maximum plausible theme-target HP: "
             .. tostring(SETTINGS.MAX_PLAUSIBLE_THEME_HP),
         "Presence hold ticks: " .. tostring(SETTINGS.PRESENCE_HOLD_TICKS),
@@ -7792,6 +7801,11 @@ local function buildReport()
         .. tostring(playbackActive)
     lines[#lines + 1] = "Pending theme: "
         .. tostring(pendingTheme ~= nil and pendingTheme.name or "none")
+    lines[#lines + 1] = string.format(
+        "Last verified unthemed target: object=0x%X tick=%d",
+        SETTINGS._unthemedTargetObject or 0,
+        SETTINGS._unthemedTargetTick or -100000
+    )
     lines[#lines + 1] = string.format(
         "On-demand BGM switches completed: %u",
         totalActiveSwitches
@@ -8949,6 +8963,28 @@ local function markThemePresent(
     end
 end
 
+function SETTINGS._markUnthemedTarget(object, hp, maxHp, modelCode)
+    local isNewTarget =
+        SETTINGS._unthemedTargetObject ~= object
+        or tick - SETTINGS._unthemedTargetTick
+            > SETTINGS.PRESENCE_HOLD_TICKS
+    SETTINGS._unthemedTargetTick = tick
+    SETTINGS._unthemedTargetObject = object
+    if isNewTarget then
+        addTimeline(string.format(
+            "UNTHEMED TARGET PRESENT tick=%u seconds=%.3f "
+                .. "object=0x%X HP=%u/%u model=%s "
+                .. "action=preserve-current-private-theme",
+            tick,
+            tick / 60,
+            object,
+            hp,
+            maxHp,
+            modelCode or "none"
+        ), true)
+    end
+end
+
 local function exclusionMatches(maxHp, fingerprint)
     local world = safeReadByte(WORLD_ADDRESS)
     local room = safeReadByte(ROOM_ADDRESS)
@@ -9064,9 +9100,19 @@ local function examineEntity(object, source)
     end
 
     if theme ~= nil and theme.available then
+        SETTINGS._unthemedTargetTick = -100000
+        SETTINGS._unthemedTargetObject = 0
+        SETTINGS._lastPreservedTargetObject = 0
         markThemePresent(
             theme,
             matchSource or source,
+            object,
+            hp,
+            maxHp,
+            modelCode
+        )
+    elseif theme == nil then
+        SETTINGS._markUnthemedTarget(
             object,
             hp,
             maxHp,
@@ -9545,6 +9591,45 @@ end
 function SETTINGS._updatePresenceAndRoute()
     local selected = SETTINGS._selectActiveThemeEvidence()
     if selected == nil then
+        local preserveForUnthemedTarget =
+            not SETTINGS._sceneChangedThisTick
+            and not SETTINGS._forceFadeAfterSceneChange
+            and tick - SETTINGS._unthemedTargetTick
+                <= SETTINGS.PRESENCE_HOLD_TICKS
+            and (
+                playbackActive
+                or currentTheme ~= nil
+                or pendingTheme ~= nil
+            )
+        if preserveForUnthemedTarget then
+            if pendingMode ~= "fade-detach" then
+                stopRequested = false
+            end
+            if SETTINGS._lastPreservedTargetObject
+                ~= SETTINGS._unthemedTargetObject
+            then
+                SETTINGS._lastPreservedTargetObject =
+                    SETTINGS._unthemedTargetObject
+                addTimeline(string.format(
+                    "PRIVATE THEME PRESERVED tick=%u seconds=%.3f "
+                        .. "theme=%s target=0x%X "
+                        .. "reason=verified lock-on target has no theme",
+                    tick,
+                    tick / 60,
+                    currentTheme ~= nil
+                        and currentTheme.name
+                        or (
+                            pendingTheme ~= nil
+                                and pendingTheme.name
+                                or activeEnemy
+                                or "none"
+                        ),
+                    SETTINGS._unthemedTargetObject
+                ), true)
+            end
+            return
+        end
+        SETTINGS._lastPreservedTargetObject = 0
         if activeEnemy ~= nil then
             addTimeline(string.format(
                 "ROUTE DISARMED tick=%u seconds=%.3f enemy=%s "
@@ -9579,6 +9664,8 @@ function SETTINGS._updatePresenceAndRoute()
         return
     end
 
+    SETTINGS._lastPreservedTargetObject = 0
+    SETTINGS._forceFadeAfterSceneChange = false
     if pendingMode ~= "fade-detach" then
         stopRequested = false
     end
@@ -9959,6 +10046,7 @@ function SETTINGS._processDispatchCounter()
         currentTheme = nil
         playbackActive = false
         stopRequested = false
+        SETTINGS._forceFadeAfterSceneChange = false
         pendingTheme = nil
         pendingMode = nil
         activeSwitchQueued = false
@@ -10204,6 +10292,11 @@ function SETTINGS._resetPrivateThemeState()
     pendingMode = nil
     activeSwitchQueued = false
     stopRequested = false
+    SETTINGS._unthemedTargetTick = -100000
+    SETTINGS._unthemedTargetObject = 0
+    SETTINGS._lastPreservedTargetObject = 0
+    SETTINGS._sceneChangedThisTick = false
+    SETTINGS._forceFadeAfterSceneChange = false
     graphQueue = {}
     graphQueueHead = 1
     graphQueued = {}
@@ -10439,6 +10532,7 @@ function SETTINGS._privateThemeInit()
     enabled = true
     lastWorld = safeReadByte(WORLD_ADDRESS)
     lastRoom = safeReadByte(ROOM_ADDRESS)
+    SETTINGS._sceneChangedThisTick = false
     SETTINGS._updatePresenceAndRoute()
 
     addStatus("READY: " .. hookReason .. ".", true)
@@ -10464,6 +10558,7 @@ function SETTINGS._privateThemeFrame()
         return
     end
     tick = tick + 1
+    SETTINGS._sceneChangedThisTick = false
 
     if not frameDispatcherInstalled then
         local frameOK, frameReason = activateFrameDispatcher()
@@ -10500,6 +10595,14 @@ function SETTINGS._privateThemeFrame()
     end
     if world ~= lastWorld or room ~= lastRoom then
         evidence = {}
+        SETTINGS._unthemedTargetTick = -100000
+        SETTINGS._unthemedTargetObject = 0
+        SETTINGS._lastPreservedTargetObject = 0
+        SETTINGS._sceneChangedThisTick = true
+        SETTINGS._forceFadeAfterSceneChange =
+            playbackActive
+            or currentTheme ~= nil
+            or pendingTheme ~= nil
         lastWorld = world
         lastRoom = room
         SETTINGS._restartGraph()
