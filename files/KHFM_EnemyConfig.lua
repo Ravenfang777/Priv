@@ -130,13 +130,13 @@ local ENEMY_SETTINGS = {
     ["Riku - Wooden Sword"] = {
         MAX_HP = 280,
         ANIMATION_SPEED = {},
-        OVERALL_SPEED = 1.3,
+        OVERALL_SPEED = 1.4,
         BATTLE_THEME = "KHFM_RowdyRumbleTheme.win32.scd", 
     },
     ["Tidus"] = {
         MAX_HP = 220,
         ANIMATION_SPEED = {},
-        OVERALL_SPEED = 1.4,
+        OVERALL_SPEED = 1.5,
         BATTLE_THEME = "KHFM_TidusTheme.win32.scd",
     },
     ["Selphie"] = { 
