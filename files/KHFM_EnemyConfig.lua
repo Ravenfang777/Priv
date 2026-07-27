@@ -153,7 +153,7 @@ local ENEMY_SETTINGS = {
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
     ["Darkside"] = { 
-        MAX_HP = 900,
+        MAX_HP = 600,
         ANIMATION_SPEED = { [0xDA] = 1.00 },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
@@ -175,7 +175,7 @@ local ENEMY_SETTINGS = {
     ["Queen's Heart Cards"] = { 
         MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Cloud"] = { 
-        MAX_HP = 1500,
+        MAX_HP = 999,
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_CloudTheme.win32.scd", 
@@ -187,11 +187,11 @@ local ENEMY_SETTINGS = {
     ["Hades"] = { 
         MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Rock Titan"] = { 
-        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ice Titan"] = { 
-        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
-        MAX_HP = 7777, 
+        MAX_HP = 999, 
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
