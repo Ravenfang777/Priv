@@ -369,7 +369,14 @@ local INTERNAL_CONFIG = {
         ["Shadow"] = {
             model_codes = { "xa_ex_2020", "xa_ex_2021", "xa_ex_2022", "xa_ex_2029" },
             fingerprints = {},
-            context_bindings = {},
+            context_bindings = {
+                {
+                    world = 1, room = 0, native_max_hp = 12,
+                    max_hp_values = { 12 },
+                    fingerprint =
+                        "00022FF8:00000030:0000C000:00016370:0054:0003",
+                },
+},
         },
         ["Soldier"] = {
             model_codes = { "xa_ex_2010", "xa_ex_2019" },
