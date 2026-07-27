@@ -756,7 +756,14 @@ local INTERNAL_CONFIG = {
         ["Sephiroth"] = {
             model_codes = { "xa_ex_3000", "xa_ex_3008", "xa_ex_3009" },
             fingerprints = {},
-            context_bindings = {},
+            context_bindings = {
+                {
+                    world = 1, room = 0, native_max_hp = 90,
+                    max_hp_values = { 90 },
+                    fingerprint =
+                        "000DCB78:00000140:00050000:000764D0:013E:001D",
+                },
+},
         },
 
         -- ================================================================
