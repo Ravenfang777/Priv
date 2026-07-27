@@ -161,7 +161,7 @@ local ENEMY_SETTINGS = {
     ["Leon"] = {
         MAX_HP = 999,
         ANIMATION_SPEED = { [0xD0] = 1.00, [0x00] = 3.00, [0x01] = 3.00, [0x07] = 1.00, [0x49] = 1.00, [0xCA] = 1.40, [0xCB] = 1.40, [0xCC] = 1.40, [0xD7] = 2.00, [0xD8] = 2.00, },
-        OVERALL_SPEED = 1.2,
+        OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
     ["Guard Armor"] = { 
