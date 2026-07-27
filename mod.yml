@@ -1,6 +1,6 @@
-title: KHFM Enemy Config v4.4.5 Fingerprint + Native Slot Fix
+title: KHFM Enemy Config v4.4.6 Darkside Registration Route Fix
 originalAuthor: Raven Fang
-description: Cross-room fingerprint identity, per-enemy HP and speed, and private themes that replace each enemy's actual native BGM slot. No native music asset is replaced.
+description: Cross-room fingerprint identity, per-enemy HP and speed, and private themes with matched resource-class and playback-slot routing. No native music asset is replaced.
 assets:
 - name: scripts/KHFM_EnemyConfig.lua
   method: copy

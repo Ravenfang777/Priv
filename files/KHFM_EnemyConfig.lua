@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.5.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.6.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -667,7 +667,7 @@ local INTERNAL_CONFIG = {
         },
         ["Darkside"] = {
             source_bgm = "music145.win32.scd",
-            bgm_slot = 1, music_priority = 100,
+            bgm_slot = 0, music_priority = 100,
             model_codes = { "xa_di_3000", "xa_di_3001", "xa_di_3009" },
             fingerprints = {},
             context_bindings = {
@@ -7199,7 +7199,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_5_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_6_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -7562,6 +7562,12 @@ SETTINGS._DETACHED_CACHE_RELOCATIONS = {
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 
+-- register_bgm_resource receives the resource class in EDX. The first-load
+-- template was originally assembled for slot/class 1, just like its stop and
+-- play calls. A slot-0 theme must patch all three values together; otherwise
+-- registration succeeds but the slot-0 playback lookup cannot select the
+-- class-1 resource.
+local REGISTER_RESOURCE_CLASS_IMMEDIATE_OFFSETS = { 0x05F }
 local REGISTER_BGM_IMMEDIATE_OFFSETS = { 0x092, 0x09C }
 local CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0C5, 0x0CF }
 SETTINGS._DETACHED_CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0AA, 0x0B4 }
@@ -7709,7 +7715,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.5:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.6:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7735,7 +7741,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.5 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.6 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
@@ -8324,7 +8330,13 @@ local function buildFrameCode(hex, expectedSize, relocations)
     return code
 end
 
-local function patchFrameBgmId(code, immediateOffsets, bgmId)
+local function patchFrameRouteImmediate(
+    code,
+    immediateOffsets,
+    opcode,
+    bgmId,
+    fieldName
+)
     if type(bgmId) ~= "number"
         or bgmId < 0
         or bgmId > SHARED.MAX_TRACKED_BGM_SLOT
@@ -8333,16 +8345,37 @@ local function patchFrameBgmId(code, immediateOffsets, bgmId)
         return nil, "private-theme BGM slot is invalid"
     end
     for _, offset in ipairs(immediateOffsets) do
-        if code[offset + 1] ~= 0xB9
+        if code[offset + 1] ~= opcode
             or bytesU32(code, offset + 2) ~= 1
         then
             return nil,
-                "embedded BGM-slot immediate signature mismatch at 0x"
+                "embedded " .. fieldName
+                    .. " immediate signature mismatch at 0x"
                     .. string.format("%X", offset)
         end
         putU32(code, offset + 1, bgmId)
     end
     return code
+end
+
+local function patchFrameBgmId(code, immediateOffsets, bgmId)
+    return patchFrameRouteImmediate(
+        code,
+        immediateOffsets,
+        0xB9,
+        bgmId,
+        "BGM-slot"
+    )
+end
+
+local function patchFrameResourceClass(code, immediateOffsets, bgmId)
+    return patchFrameRouteImmediate(
+        code,
+        immediateOffsets,
+        0xBA,
+        bgmId,
+        "BGM-resource-class"
+    )
 end
 
 local function buildHookData()
@@ -8494,6 +8527,14 @@ function SETTINGS._installRegisterStage(bgmId)
     frameCode, reason = patchFrameBgmId(
         frameCode,
         REGISTER_BGM_IMMEDIATE_OFFSETS,
+        bgmId
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    frameCode, reason = patchFrameResourceClass(
+        frameCode,
+        REGISTER_RESOURCE_CLASS_IMMEDIATE_OFFSETS,
         bgmId
     )
     if frameCode == nil then
@@ -9745,12 +9786,13 @@ function SETTINGS._processPrivateScdTransfer()
     addTimeline(string.format(
         "PRIVATE SCD COPY VERIFIED tick=%u seconds=%.3f "
             .. "enemy=%s bytes=%u; REGISTRATION QUEUED "
-            .. "runtime=%s slot=%u",
+            .. "runtime=%s resource_class=%u slot=%u",
         tick,
         tick / 60,
         theme.name,
         SETTINGS._copyOffset,
         theme.runtimeName,
+        theme.bgmId,
         theme.bgmId
     ), true)
 end
@@ -9853,13 +9895,15 @@ function SETTINGS._processDispatchCounter()
         elseif status == 7 then
             addTimeline(string.format(
                 "PRIVATE BGM RESOURCE READY tick=%u seconds=%.3f "
-                    .. "enemy=%s runtime=%s slot=%u size=%u "
+                    .. "enemy=%s runtime=%s resource_class=%u slot=%u size=%u "
                     .. "buffer=0x%X resource=0x%08X",
                 tick,
                 tick / 60,
                 pendingTheme ~= nil and pendingTheme.name or "none",
                 pendingTheme ~= nil
                     and pendingTheme.runtimeName or "none",
+                pendingTheme ~= nil
+                    and pendingTheme.bgmId or SETTINGS.DEFAULT_BGM_ID,
                 pendingTheme ~= nil
                     and pendingTheme.bgmId or SETTINGS.DEFAULT_BGM_ID,
                 lastLoadSize,
