@@ -37,119 +37,238 @@ LUAGUI_DESC = "Per-enemy HP, speed, and private battle themes without native mus
 -- Wakka contains the verified example. Every named row is addressable.
 
 local ENEMY_SETTINGS = {
-    ["Shadow"] = { MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.5, BATTLE_THEME = nil },
-    ["Soldier"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Powerwild"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Bouncywild"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Large Body"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Fat Bandit"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Sea Neon"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Sheltering Zone"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Aquatank"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Screwdiver"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Bandit"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Pirate"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Red Nocturne"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Blue Rhapsody"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Yellow Opera"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Green Requiem"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Wizard"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Air Soldier"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Pot Spider"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Barrel Spider"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Pot Scorpion"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Wight Knight"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Air Pirate"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Gargoyle"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Search Ghost"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Darkball"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Invisible"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Behemoth"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Wyvern"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Angel Star"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Defender"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["White Mushroom"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Black Fungus"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Rare Truffle"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Pink Agaricus"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Neoshadow"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Stealth Soldier"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Gigas Shadow"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Sniperwild"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Black Ballade"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Grand Ghost"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Jet Balloon"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Missile Diver"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Chimera"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Battleship"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Shadow"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+    ["Soldier"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = nil },
+    ["Powerwild"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+    ["Bouncywild"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+    ["Large Body"] = { 
+        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Fat Bandit"] = { 
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Sea Neon"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Sheltering Zone"] = { 
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Aquatank"] = { 
+        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Screwdiver"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Bandit"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Pirate"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Red Nocturne"] = {
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Blue Rhapsody"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Yellow Opera"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Green Requiem"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Wizard"] = { 
+        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Air Soldier"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Pot Spider"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+    ["Barrel Spider"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+    ["Pot Scorpion"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+    ["Wight Knight"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Air Pirate"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Gargoyle"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Search Ghost"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Darkball"] = { 
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Invisible"] = { 
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Behemoth"] = { 
+        MAX_HP = 3000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Wyvern"] = { 
+        MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Angel Star"] = { 
+        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Defender"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["White Mushroom"] = { 
+        MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Black Fungus"] = { 
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Rare Truffle"] = { 
+        MAX_HP = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Pink Agaricus"] = {
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Neoshadow"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Stealth Soldier"] = { 
+        MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Gigas Shadow"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Sniperwild"] = {
+        MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Black Ballade"] = {
+        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Grand Ghost"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Jet Balloon"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Missile Diver"] = { 
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Chimera"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Battleship"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku - Wooden Sword"] = {
-        MAX_HP = 300,
+        MAX_HP = 280,
         ANIMATION_SPEED = {},
         OVERALL_SPEED = 1.3,
-        BATTLE_THEME = "KHFM_RowdyRumbleTheme.win32.scd" },
+        BATTLE_THEME = "KHFM_RowdyRumbleTheme.win32.scd", 
+    },
     ["Tidus"] = {
-        MAX_HP = 240,
+        MAX_HP = 220,
         ANIMATION_SPEED = {},
         OVERALL_SPEED = 1.4,
-        BATTLE_THEME = "KHFM_TidusTheme.win32.scd" },
+        BATTLE_THEME = "KHFM_TidusTheme.win32.scd",
+    },
     ["Selphie"] = { 
-        MAX_HP = 200, 
+        MAX_HP = 180, 
         ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 1.60, [0x02] = 1.60, [0xED] = 1.60, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 2.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 1.50, [0xF6] = 2.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, 
         OVERALL_SPEED = nil,
-        BATTLE_THEME = "KHFM_SelphieTheme.win32.scd" },
+        BATTLE_THEME = "KHFM_SelphieTheme.win32.scd", 
+    },
     ["Wakka"] = {
-        MAX_HP = 220,
+        MAX_HP = 200,
         ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0x02] = 2.00, [0x06] = 4.00, [0x07] = 4.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 4.00, [0xF5] = 5.00, [0xF6] = 5.00, [0xF7] = 1.50 },
         OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
-    ["Darkside"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Leon"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Guard Armor"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Opposite Armor"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Trickmaster"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Queen's Spade Cards"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Queen's Heart Cards"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Cloud"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Hercules"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Cerberus"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Hades"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Rock Titan"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Ice Titan"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Sephiroth"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Sabor"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Clayton"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Stealth Sneak"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Jafar"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Genie Jafar"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Pot Centipede"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Kurt Zisa"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Cave of Wonders Guardian"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Parasite Cage"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Ursula"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Giant Ursula"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Flotsam and Jetsam"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Atlantica Shark"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Lock"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Shock"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Barrel"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Oogie Boogie"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Oogie's Manor"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Captain Hook"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Phantom"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["AntiSora"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Maleficent"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Maleficent Dragon"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Riku - Soul Eater"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Riku-Ansem"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Dark Riku"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Chernabog"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Ansem with Guardian"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Bit Sniper"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["World of Chaos"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Ansem - Final Boss"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Xemnas - Enigmatic Man"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
-    ["Yuffie"] = { MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Darkside"] = { 
+        MAX_HP = 600,
+        ANIMATION_SPEED = {},
+        OVERALL_SPEED = nil,
+        BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
+    },
+    ["Leon"] = {
+        MAX_HP = 999,
+        ANIMATION_SPEED = {},
+        OVERALL_SPEED = nil,
+        BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
+    },
+    ["Guard Armor"] = { 
+        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Opposite Armor"] = { 
+        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Trickmaster"] = { 
+        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Queen's Spade Cards"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Queen's Heart Cards"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Cloud"] = { 
+        MAX_HP = 1500,
+        ANIMATION_SPEED = {}, 
+        OVERALL_SPEED = nil, 
+        BATTLE_THEME = "KHFM_CloudTheme.win32.scd", 
+    },
+    ["Hercules"] = { 
+        MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Cerberus"] = { 
+        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Hades"] = { 
+        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Rock Titan"] = { 
+        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Ice Titan"] = { 
+        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Sephiroth"] = { 
+        MAX_HP = 7777, 
+        ANIMATION_SPEED = {}, 
+        OVERALL_SPEED = nil, 
+        BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
+    },
+    ["Sabor"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Clayton"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Stealth Sneak"] = { 
+        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Jafar"] = { 
+        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Genie Jafar"] = { 
+        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Pot Centipede"] = { 
+        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Kurt Zisa"] = {
+        MAX_HP = 1800, 
+        ANIMATION_SPEED = {}, 
+        OVERALL_SPEED = nil,
+        BATTLE_THEME = nil 
+    },
+    ["Cave of Wonders Guardian"] = { 
+        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Parasite Cage"] = { 
+        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Ursula"] = {
+        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Giant Ursula"] = { 
+        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Flotsam and Jetsam"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Atlantica Shark"] = { 
+        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Lock"] = { 
+        MAX_HP = 10, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Shock"] = { 
+        MAX_HP = 10, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Barrel"] = { 
+        MAX_HP = 10, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Oogie Boogie"] = { 
+        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Oogie's Manor"] = { 
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Captain Hook"] = { 
+        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Phantom"] = { 
+        MAX_HP = 1800, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["AntiSora"] = { 
+        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Maleficent"] = {
+        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Maleficent Dragon"] = { 
+        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Riku - Soul Eater"] = { 
+        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Riku-Ansem"] = { 
+       MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Dark Riku"] = { 
+       MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Chernabog"] = { 
+       MAX_HP = 1800, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Ansem with Guardian"] = { 
+       MAX_HP = 2100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Bit Sniper"] = { 
+       MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["World of Chaos"] = {
+       MAX_HP = 2700, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Ansem - Final Boss"] = { 
+       MAX_HP = 2100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = "KHFM_AnsemShipTheme.win32.scd", },
+    ["Xemnas - Enigmatic Man"] = { 
+       MAX_HP = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+    ["Yuffie"] = {
+       MAX_HP = 999,
+       ANIMATION_SPEED = {},
+       OVERALL_SPEED = nil,
+       BATTLE_THEME = nil
+    },
 }
 
 -- ======================= END USER SETTINGS =======================
