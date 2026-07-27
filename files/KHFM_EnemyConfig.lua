@@ -376,18 +376,6 @@ local INTERNAL_CONFIG = {
                     fingerprint =
                         "00022FF8:00000030:0000C000:00016370:0054:0003",
                 },
-                {
-                    world = 1, room = 8, native_max_hp = 12,
-                    max_hp_values = { 12 },
-                    fingerprint =
-                        "00022FF8:00000030:0000C000:00016370:0054:0003",
-                },
-                {
-                    world = 3, room = 0,1,2,4,17, native_max_hp = 12,
-                    max_hp_values = { 12 },
-                    fingerprint =
-                        "00022FF8:00000030:0000C000:00016370:0054:0003",
-                },
 },
         },
         ["Soldier"] = {
