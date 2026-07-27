@@ -758,8 +758,8 @@ local INTERNAL_CONFIG = {
             fingerprints = {},
             context_bindings = {
                 {
-                    world = 1, room = 0, native_max_hp = 90,
-                    max_hp_values = { 90 },
+                    world = 11, room = 6, native_max_hp = 1800,
+                    max_hp_values = { 1800 },
                     fingerprint =
                         "000DCB78:00000140:00050000:000764D0:013E:001D",
                 },
