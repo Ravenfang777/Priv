@@ -153,8 +153,8 @@ local ENEMY_SETTINGS = {
     },
     ["Darkside"] = { 
         MAX_HP = 600,
-        ANIMATION_SPEED = {},
-        OVERALL_SPEED = nil,
+        ANIMATION_SPEED = { [0xDA] = 1.00 },
+        OVERALL_SPEED = 1.5,
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
     },
     ["Leon"] = {
@@ -368,10 +368,22 @@ local INTERNAL_CONFIG = {
         -- ================================================================
         ["Shadow"] = {
             model_codes = { "xa_ex_2020", "xa_ex_2021", "xa_ex_2022", "xa_ex_2029" },
-            fingerprints = {},
+            fingerprints = {00022FF8:00000030:0000C000:00016370:0054:0003},
             context_bindings = {
                 {
                     world = 1, room = 5, native_max_hp = 12,
+                    max_hp_values = { 12 },
+                    fingerprint =
+                        "00022FF8:00000030:0000C000:00016370:0054:0003",
+                },
+                {
+                    world = 1, room = 8, native_max_hp = 12,
+                    max_hp_values = { 12 },
+                    fingerprint =
+                        "00022FF8:00000030:0000C000:00016370:0054:0003",
+                },
+                {
+                    world = 3, room = 0,1,2,4,17, native_max_hp = 12,
                     max_hp_values = { 12 },
                     fingerprint =
                         "00022FF8:00000030:0000C000:00016370:0054:0003",
@@ -668,12 +680,28 @@ local INTERNAL_CONFIG = {
         ["Darkside"] = {
             model_codes = { "xa_di_3000", "xa_di_3001", "xa_di_3009" },
             fingerprints = {},
-            context_bindings = {},
+            context_bindings = {
+                {
+                    world = 1, room = 8, native_max_hp = 300,
+                    max_hp_values = { 300 },
+                    fingerprint =
+                        "0007DC78:000000A0:00028000:000533A0:00E6:000A",
+                },
+},
         },
         ["Leon"] = {
+            source_bgm = "music131.win32.scd",
+            bgm_slot = 1, music_priority = 100,
             model_codes = { "xa_ex_1030", "xa_ex_1031", "xa_ex_1038", "xa_ex_1039" },
             fingerprints = {},
-            context_bindings = {},
+            context_bindings = {
+                {
+                    world = 3, room = 0, native_max_hp = 120,
+                    max_hp_values = { 120 },
+                    fingerprint =
+                        "00092CF8:000000A0:00028000:0005ABF0:00F7:000D",
+                },
+},
         },
         ["Guard Armor"] = {
             model_codes = { "xa_tw_3000", "xa_tw_3009" },
