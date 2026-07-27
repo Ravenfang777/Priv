@@ -1,6 +1,6 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.4.
+-- Single-file enemy HP, speed, and multi-private-theme controller v4.4.5.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -358,7 +358,7 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KH1FM_All_Enemy_Stats_Speed_Themes_v2_1_Stats_Report.txt",
+        "KH1FM_All_Enemy_Stats_Speed_Themes_v2_2_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
         "KH1FM_All_Enemy_Stats_Speed_Themes_v2_Music_Report.txt",
 
@@ -997,6 +997,50 @@ do
         end
     end
 
+    -- A fingerprint describes the enemy's MOBJ/model structure and remains
+    -- stable when another instance of that enemy appears in a different room.
+    -- Promote every non-conflicting fingerprint learned from a context binding
+    -- into the row's global fingerprint list. Context remains a fallback for
+    -- rows whose fingerprint is unknown or ambiguous.
+    local fingerprintOwners = {}
+    local function claimFingerprint(fingerprint, enemyName)
+        if type(fingerprint) ~= "string" or fingerprint == "" then
+            return
+        end
+        local existing = fingerprintOwners[fingerprint]
+        if existing == nil then
+            fingerprintOwners[fingerprint] = enemyName
+        elseif existing ~= enemyName then
+            fingerprintOwners[fingerprint] = false
+        end
+    end
+    for name, row in pairs(INTERNAL_CONFIG.ENEMIES) do
+        for _, fingerprint in ipairs(row.fingerprints or {}) do
+            claimFingerprint(fingerprint, name)
+        end
+        for _, binding in ipairs(row.context_bindings or {}) do
+            claimFingerprint(binding.fingerprint, name)
+        end
+    end
+    INTERNAL_CONFIG.UNIQUE_FINGERPRINT_COUNT = 0
+    for fingerprint, owner in pairs(fingerprintOwners) do
+        if owner ~= false then
+            local row = INTERNAL_CONFIG.ENEMIES[owner]
+            local present = false
+            for _, existing in ipairs(row.fingerprints or {}) do
+                if existing == fingerprint then
+                    present = true
+                    break
+                end
+            end
+            if not present then
+                row.fingerprints[#row.fingerprints + 1] = fingerprint
+            end
+            INTERNAL_CONFIG.UNIQUE_FINGERPRINT_COUNT =
+                INTERNAL_CONFIG.UNIQUE_FINGERPRINT_COUNT + 1
+        end
+    end
+
     local profileCount = 0
     for name, row in pairs(INTERNAL_CONFIG.ENEMIES) do
         profileCount = profileCount + 1
@@ -1023,6 +1067,18 @@ do
 
         row.replacement_bgm = battleThemeName(edit.BATTLE_THEME)
         row.music_enabled = row.replacement_bgm ~= nil
+        if row.bgm_slot ~= nil
+            and (
+                type(row.bgm_slot) ~= "number"
+                or row.bgm_slot < 0
+                or row.bgm_slot > INTERNAL_CONFIG.MAX_TRACKED_BGM_SLOT
+                or row.bgm_slot ~= math.floor(row.bgm_slot)
+            )
+        then
+            error(tostring(name) .. ".bgm_slot must be nil or an integer "
+                .. "from 0 through "
+                .. tostring(INTERNAL_CONFIG.MAX_TRACKED_BGM_SLOT))
+        end
 
         for _, binding in ipairs(row.context_bindings or {}) do
             binding.max_hp_values = binding.max_hp_values
@@ -2305,17 +2361,17 @@ local function identifyProfile(object, nativeMaxHp)
         end
     end
 
-    local contextProfile, worldId, roomId, contextKey =
-        identifyContextProfile(nativeMaxHp, fingerprint)
-    if profile == nil and contextProfile ~= nil then
-        profile = contextProfile
-        matchSource = "target_context:" .. contextKey
-    end
     if profile == nil and mobjIdentity ~= nil then
         profile = fingerprintProfiles[mobjIdentity.fingerprint]
         if profile ~= nil then
             matchSource = "fingerprint:" .. mobjIdentity.fingerprint
         end
+    end
+    local contextProfile, worldId, roomId, contextKey =
+        identifyContextProfile(nativeMaxHp, fingerprint)
+    if profile == nil and contextProfile ~= nil then
+        profile = contextProfile
+        matchSource = "target_context:" .. contextKey
     end
 
     return profile, modelCode, mobjIdentity, matchSource, worldId, roomId
@@ -3959,7 +4015,7 @@ function SETTINGS._combinedStatsInit()
     lastOverflowCount = -1
     damageRouteLogKey = nil
 
-    record("KH1FM All Enemy Stats + Speed + Themes v2.1 / Stats report", false)
+    record("KH1FM All Enemy Stats + Speed + Themes v2.2 / Stats report", false)
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
     record(string.format(
         "Global settings: max_hp=%s HP_multiplier=%.3f "
@@ -4020,7 +4076,10 @@ function SETTINGS._combinedStatsInit()
         return
     end
     record(string.format(
-        "Target-context bindings active: %u; current world=%s room=%s",
+        "Unique fingerprint bindings active: %u; "
+            .. "target-context fallbacks active: %u; "
+            .. "current world=%s room=%s",
+        SHARED.UNIQUE_FINGERPRINT_COUNT or 0,
         #targetContextProfileBindings,
         tostring(safeReadByte(WORLD_ADDRESS)),
         tostring(safeReadByte(ROOM_ADDRESS))
@@ -4066,7 +4125,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "Named row values activate after model-code, target-context, or unique-fingerprint identification; unmapped targets use CONFIRMED_TARGET_FALLBACK.",
+        "Named row values activate after model-code or unique-fingerprint identification across rooms; target-context is a fallback and unmapped targets use CONFIRMED_TARGET_FALLBACK.",
         true
     )
     record(
@@ -7125,7 +7184,7 @@ local SETTINGS = {
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
-    PRIMARY_BGM_ID = 1,
+    DEFAULT_BGM_ID = 1,
     FIRST_PRIVATE_MUSIC_ID = 900,
     REQUIRE_VERIFIED_SORA_TARGET = true,
     MAX_PLAUSIBLE_THEME_HP = 1000000,
@@ -7140,7 +7199,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_4_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_5_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = 60,
     MAX_TIMELINE_ROWS = 20000,
@@ -7363,7 +7422,8 @@ local REGISTER_RELOCATIONS = {
 
 -- Stage 3 never calls register_bgm_resource. It finds the already-owned node
 -- by its saved resource ID and exact owned buffer, moves that node to the head
--- of the slot-1 list, and invokes the native BGM route. This fixes v4.4's
+-- of the selectable list, and invokes the native BGM route on the row's slot.
+-- This fixes v4.4's
 -- duplicate-registration use-after-free crash on a configured enemy's second
 -- encounter.
 local CACHE_CODE_HEX =
@@ -7434,7 +7494,7 @@ local CACHE_RELOCATIONS = {
 
 -- Stage 3D reactivates a node that Stage 4 deliberately detached. It inserts
 -- the same game-owned resource object at the selectable-list head under the
--- file-manager lock, then uses the verified slot-1 playback route. No second
+-- file-manager lock, then uses the row's verified playback slot. No second
 -- registration or buffer ownership transfer occurs.
 SETTINGS._DETACHED_CACHE_CODE_HEX =
     "514883ec40833d00000000030f85de000000c7050000000000000000c60500"
@@ -7501,6 +7561,11 @@ SETTINGS._DETACHED_CACHE_RELOCATIONS = {
     { field = 0x0F7, next = 0x0FB,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
+
+local REGISTER_BGM_IMMEDIATE_OFFSETS = { 0x092, 0x09C }
+local CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0C5, 0x0CF }
+SETTINGS._DETACHED_CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0AA, 0x0B4 }
+SETTINGS._FADE_DETACH_BGM_IMMEDIATE_OFFSETS = { 0x023 }
 
 -- Stage 4 invokes KH1FM's native timed stop and removes the selected private
 -- resource from the file manager's selectable BGM list. The resource object
@@ -7644,7 +7709,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.4:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.5:MultiTheme] " .. message)
 end
 
 local function addStatus(message, echo)
@@ -7670,11 +7735,11 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.4 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.5 / Multi Private Theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: private SCDs are copied into native aligned buffers, "
             .. "registered under private music900-music995 identities, "
-            .. "played temporarily on BGM slot 1, then faded and detached "
+            .. "played on each enemy row's native BGM slot, then faded and detached "
             .. "after the configured enemy leaves the encounter.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
@@ -7695,12 +7760,13 @@ local function buildReport()
     else
         for _, theme in ipairs(SETTINGS.THEME_ORDER) do
             lines[#lines + 1] = string.format(
-                "%s | file=%s | runtime=%s | size=%u | "
+                "%s | file=%s | runtime=%s | slot=%u | size=%u | "
                     .. "priority=%d | loaded=%s | detached=%s | "
                     .. "activations=%u",
                 theme.name,
                 theme.filename,
                 theme.runtimeName,
+                theme.bgmId,
                 theme.size,
                 theme.priority,
                 tostring(theme.loaded == true),
@@ -8258,6 +8324,27 @@ local function buildFrameCode(hex, expectedSize, relocations)
     return code
 end
 
+local function patchFrameBgmId(code, immediateOffsets, bgmId)
+    if type(bgmId) ~= "number"
+        or bgmId < 0
+        or bgmId > SHARED.MAX_TRACKED_BGM_SLOT
+        or bgmId ~= math.floor(bgmId)
+    then
+        return nil, "private-theme BGM slot is invalid"
+    end
+    for _, offset in ipairs(immediateOffsets) do
+        if code[offset + 1] ~= 0xB9
+            or bytesU32(code, offset + 2) ~= 1
+        then
+            return nil,
+                "embedded BGM-slot immediate signature mismatch at 0x"
+                    .. string.format("%X", offset)
+        end
+        putU32(code, offset + 1, bgmId)
+    end
+    return code
+end
+
 local function buildHookData()
     local data = {}
     for index = 1, DATA_SIZE do
@@ -8395,11 +8482,19 @@ function SETTINGS._installAllocationStage()
     return true
 end
 
-function SETTINGS._installRegisterStage()
+function SETTINGS._installRegisterStage(bgmId)
     local frameCode, reason = buildFrameCode(
         REGISTER_CODE_HEX,
         REGISTER_CODE_SIZE,
         REGISTER_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    frameCode, reason = patchFrameBgmId(
+        frameCode,
+        REGISTER_BGM_IMMEDIATE_OFFSETS,
+        bgmId
     )
     if frameCode == nil then
         return false, reason
@@ -8413,11 +8508,19 @@ function SETTINGS._installRegisterStage()
     return true
 end
 
-function SETTINGS._installCacheStage()
+function SETTINGS._installCacheStage(bgmId)
     local frameCode, reason = buildFrameCode(
         CACHE_CODE_HEX,
         CACHE_CODE_SIZE,
         CACHE_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    frameCode, reason = patchFrameBgmId(
+        frameCode,
+        CACHE_BGM_IMMEDIATE_OFFSETS,
+        bgmId
     )
     if frameCode == nil then
         return false, reason
@@ -8431,11 +8534,19 @@ function SETTINGS._installCacheStage()
     return true
 end
 
-function SETTINGS._installDetachedCacheStage()
+function SETTINGS._installDetachedCacheStage(bgmId)
     local frameCode, reason = buildFrameCode(
         SETTINGS._DETACHED_CACHE_CODE_HEX,
         SETTINGS._DETACHED_CACHE_CODE_SIZE,
         SETTINGS._DETACHED_CACHE_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    frameCode, reason = patchFrameBgmId(
+        frameCode,
+        SETTINGS._DETACHED_CACHE_BGM_IMMEDIATE_OFFSETS,
+        bgmId
     )
     if frameCode == nil then
         return false, reason
@@ -8449,11 +8560,19 @@ function SETTINGS._installDetachedCacheStage()
     return true
 end
 
-function SETTINGS._installFadeDetachStage()
+function SETTINGS._installFadeDetachStage(bgmId)
     local frameCode, reason = buildFrameCode(
         SETTINGS._FADE_DETACH_CODE_HEX,
         SETTINGS._FADE_DETACH_CODE_SIZE,
         SETTINGS._FADE_DETACH_RELOCATIONS
+    )
+    if frameCode == nil then
+        return false, reason
+    end
+    frameCode, reason = patchFrameBgmId(
+        frameCode,
+        SETTINGS._FADE_DETACH_BGM_IMMEDIATE_OFFSETS,
+        bgmId
     )
     if frameCode == nil then
         return false, reason
@@ -8887,12 +9006,6 @@ local function examineEntity(object, source)
         and "model_code:" .. modelCode .. " via " .. source
         or nil
 
-    if theme == nil then
-        theme, matchSource = contextTheme(maxHp, fingerprint)
-        if theme ~= nil then
-            matchSource = matchSource .. " via " .. source
-        end
-    end
     if theme == nil and fingerprint ~= nil then
         theme = SETTINGS.FINGERPRINT_PROFILES[fingerprint]
         if type(theme) == "table" then
@@ -8900,6 +9013,12 @@ local function examineEntity(object, source)
                 .. " via " .. source
         else
             theme = nil
+        end
+    end
+    if theme == nil then
+        theme, matchSource = contextTheme(maxHp, fingerprint)
+        if theme ~= nil then
+            matchSource = matchSource .. " via " .. source
         end
     end
 
@@ -9195,9 +9314,9 @@ function SETTINGS._queueThemeSwitch(theme)
     local reason
     if useCache then
         if useDetachedCache then
-            ok, reason = SETTINGS._installDetachedCacheStage()
+            ok, reason = SETTINGS._installDetachedCacheStage(theme.bgmId)
         else
-            ok, reason = SETTINGS._installCacheStage()
+            ok, reason = SETTINGS._installCacheStage(theme.bgmId)
         end
     else
         theme.loaded = false
@@ -9268,7 +9387,7 @@ function SETTINGS._queueThemeSwitch(theme)
         tick,
         tick / 60,
         theme.name,
-        SETTINGS.PRIMARY_BGM_ID,
+        theme.bgmId,
         theme.filename,
         theme.runtimeName,
         theme.size
@@ -9288,7 +9407,7 @@ function SETTINGS._queueThemeFade(theme, reasonText)
 
     local ok
     local reason
-    ok, reason = SETTINGS._installFadeDetachStage()
+    ok, reason = SETTINGS._installFadeDetachStage(theme.bgmId)
     if not ok then
         enabled = false
         addStatus(
@@ -9356,7 +9475,7 @@ function SETTINGS._queueThemeFade(theme, reasonText)
         tick,
         tick / 60,
         theme.name,
-        SETTINGS.PRIMARY_BGM_ID,
+        theme.bgmId,
         SETTINGS.FADE_OUT_MS,
         tostring(reasonText or "enemy no longer present")
     ), true)
@@ -9602,7 +9721,7 @@ function SETTINGS._processPrivateScdTransfer()
         return
     end
 
-    ok, reason = SETTINGS._installRegisterStage()
+    ok, reason = SETTINGS._installRegisterStage(theme.bgmId)
     if not ok then
         SETTINGS._failPrivateTheme(reason)
         return
@@ -9632,7 +9751,7 @@ function SETTINGS._processPrivateScdTransfer()
         theme.name,
         SETTINGS._copyOffset,
         theme.runtimeName,
-        SETTINGS.PRIMARY_BGM_ID
+        theme.bgmId
     ), true)
 end
 
@@ -9741,7 +9860,8 @@ function SETTINGS._processDispatchCounter()
                 pendingTheme ~= nil and pendingTheme.name or "none",
                 pendingTheme ~= nil
                     and pendingTheme.runtimeName or "none",
-                SETTINGS.PRIMARY_BGM_ID,
+                pendingTheme ~= nil
+                    and pendingTheme.bgmId or SETTINGS.DEFAULT_BGM_ID,
                 lastLoadSize,
                 lastLoadBuffer,
                 lastTargetResource
@@ -9753,7 +9873,8 @@ function SETTINGS._processDispatchCounter()
                 tick,
                 tick / 60,
                 pendingTheme ~= nil and pendingTheme.name or "none",
-                SETTINGS.PRIMARY_BGM_ID,
+                pendingTheme ~= nil
+                    and pendingTheme.bgmId or SETTINGS.DEFAULT_BGM_ID,
                 SETTINGS.FADE_OUT_MS
             ), false)
         end
@@ -9804,7 +9925,8 @@ function SETTINGS._processDispatchCounter()
             tick,
             tick / 60,
             completed ~= nil and completed.name or "none",
-            SETTINGS.PRIMARY_BGM_ID,
+            completed ~= nil
+                and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
             SETTINGS.FADE_OUT_MS,
             delta,
             totalPrivateStops,
@@ -9926,6 +10048,8 @@ function SETTINGS._prepareThemeCatalog()
                                     + index - 1
                             ),
                             priority = row.music_priority or 10,
+                            bgmId = row.bgm_slot ~= nil
+                                and row.bgm_slot or SETTINGS.DEFAULT_BGM_ID,
                             available = true,
                             loaded = false,
                             buffer = nil,
@@ -10067,7 +10191,7 @@ function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
         "Route: every configured enemy selects its own private SCD on "
-            .. "temporary BGM slot 1 playback; the slot fades out and its "
+            .. "that enemy row's native BGM slot; the slot fades out and its "
             .. "private resource is detached after that enemy leaves.",
         false
     )
@@ -10083,7 +10207,8 @@ function SETTINGS._privateThemeInit()
     )
     addStatus(
         "Target gate: themes accept only the verified live Sora+0x74 "
-            .. "target. Model-graph sightings cannot start music.",
+            .. "target. Unique fingerprints identify the same enemy across "
+            .. "rooms; model-graph sightings cannot start music.",
         false
     )
     if not SETTINGS.ENABLE then
@@ -10283,7 +10408,7 @@ function SETTINGS._privateThemeInit()
         "Fight a configured enemy. F2 should show ENEMY PRESENT, "
             .. "ROUTE ARMED, NATIVE BUFFER READY, "
             .. "PRIVATE SCD COPY VERIFIED, then ACTIVE SWITCH EXECUTED "
-            .. "on slot 1. After defeat it should show PRIVATE THEME "
+            .. "on the row's selected slot. After defeat it should show PRIVATE THEME "
             .. "FADED AND DETACHED. Use a full game restart instead of F1.",
         true
     )

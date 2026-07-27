@@ -1,6 +1,6 @@
-title: KHFM Enemy Config v4.4.4 Target Gate + Movement Speed
+title: KHFM Enemy Config v4.4.5 Fingerprint + Native Slot Fix
 originalAuthor: Raven Fang
-description: Encounter-gated private themes with native fade-out, detached caching, per-enemy HP, animation speed, and actual world-movement speed. No native music asset is replaced.
+description: Cross-room fingerprint identity, per-enemy HP and speed, and private themes that replace each enemy's actual native BGM slot. No native music asset is replaced.
 assets:
 - name: scripts/KHFM_EnemyConfig.lua
   method: copy
@@ -14,14 +14,14 @@ assets:
   method: copy
   source:
   - name: files/KHFM_SelphieTheme.win32.scd
-- name: scripts/KHFM_TidusTheme.win32.scd
-  method: copy
-  source:
-  - name: files/KHFM_TidusTheme.win32.scd
 - name: scripts/KHFM_RowdyRumbleTheme.win32.scd
   method: copy
   source:
   - name: files/KHFM_RowdyRumbleTheme.win32.scd
+- name: scripts/KHFM_TidusTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_TidusTheme.win32.scd
 - name: scripts/KHFM_DarksideTheme.win32.scd
   method: copy
   source:
@@ -30,3 +30,15 @@ assets:
   method: copy
   source:
   - name: files/KHFM_LeonTheme.win32.scd
+- name: scripts/KHFM_CloudTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_CloudTheme.win32.scd
+- name: scripts/KHFM_SephirothTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_SephirothTheme.win32.scd
+- name: scripts/KHFM_AnsemShipTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_AnsemShipTheme.win32.scd
