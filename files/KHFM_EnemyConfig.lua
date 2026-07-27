@@ -152,9 +152,9 @@ local ENEMY_SETTINGS = {
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
     ["Darkside"] = { 
-        MAX_HP = 600,
+        MAX_HP = 900,
         ANIMATION_SPEED = { [0xDA] = 1.00 },
-        OVERALL_SPEED = 1.5,
+        OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
     },
     ["Leon"] = {
@@ -666,7 +666,7 @@ local INTERNAL_CONFIG = {
             },
         },
         ["Darkside"] = {
-            source_bgm = "music114.win32.scd",
+            source_bgm = "music115.win32.scd",
             bgm_slot = 1, music_priority = 100,
             model_codes = { "xa_di_3000", "xa_di_3001", "xa_di_3009" },
             fingerprints = {},
