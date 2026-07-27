@@ -667,7 +667,7 @@ local INTERNAL_CONFIG = {
         },
         ["Darkside"] = {
             source_bgm = "music145.win32.scd",
-            bgm_slot = 0, music_priority = 100,
+            bgm_slot = 1, music_priority = 100,
             model_codes = { "xa_di_3000", "xa_di_3001", "xa_di_3009" },
             fingerprints = {},
             context_bindings = {
