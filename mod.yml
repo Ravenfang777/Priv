@@ -22,3 +22,11 @@ assets:
   method: copy
   source:
   - name: files/KHFM_RowdyRumbleTheme.win32.scd
+- name: scripts/KHFM_DarksideTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_DarksideTheme.win32.scd
+- name: scripts/KHFM_LeonTheme.win32.scd
+  method: copy
+  source:
+  - name: files/KHFM_LeonTheme.win32.scd
