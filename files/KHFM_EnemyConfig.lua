@@ -193,7 +193,7 @@ local ENEMY_SETTINGS = {
     ["Sephiroth"] = { 
         MAX_HP = 999, 
         ANIMATION_SPEED = {}, 
-        OVERALL_SPEED = nil, 
+        OVERALL_SPEED = 2, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
     },
     ["Sabor"] = { 
