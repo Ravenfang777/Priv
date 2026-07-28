@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_17_LeonPlayHoldAB.lua
+-- File: KHFM_EnemyConfig_v4_4_18_StopThenPlayHoldStatsAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.17 LEON-FINGERPRINT PLAY-AND-HOLD A/B.
+-- v4.4.18 STOP-THEN-PLAY-AND-HOLD + STATS A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -22,7 +22,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: play one private SCD and hold until game exit"
+LUAGUI_DESC = "A/B test: stop slot once, play one private SCD, hold, and run stats"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -364,9 +364,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_17_Leon_Play_Hold_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_18_Stop_Then_Play_Hold_Stats_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_17_Leon_Play_Hold_AB_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_18_Stop_Then_Play_Hold_Stats_AB_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -4059,8 +4059,8 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.17 Leon-fingerprint "
-            .. "play-and-hold A/B / Stats report",
+        "KHFM Enemy Config v4.4.18 stop-then-play-and-hold "
+            .. "+ stats A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -7240,14 +7240,14 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.17 split: identify Leon directly by his verified
-    -- fingerprint, then allocate, copy, register, and play one
-    -- selected private SCD exactly once. Leave it active until the game
-    -- process exits. The wrapper's preliminary immediate-stop call remains
-    -- erased, and replay, fade, detach, cache activation, and freeing are
-    -- unreachable.
+    -- Diagnostic v4.4.18 split: identify Leon directly by his verified
+    -- fingerprint, then allocate, copy, register, stop the selected BGM slot
+    -- once, and play one selected private SCD exactly once. Leave it active
+    -- until the game process exits. Replay, fade, detach, cache activation,
+    -- and freeing are unreachable. The enemy HP/stat subsystem is active.
     DIAGNOSTIC_PLAY_ONCE = true,
     DIAGNOSTIC_MAX_PLAYS = 1,
+    DIAGNOSTIC_SKIP_PREPLAY_STOP = false,
     DIAGNOSTIC_FADE_DETACH_ONCE = false,
     DIAGNOSTIC_FADE_DELAY_TICKS = 300,
     COPY_CHUNK_SIZE = 0x10000,
@@ -7269,7 +7269,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_17_Leon_Play_Hold_AB_Report.txt",
+        "KHFM_EnemyConfig_v4_4_18_Stop_Then_Play_Hold_Stats_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7792,7 +7792,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.17LeonPlayHoldAB] " .. message
+        "[EnemyConfigV4.4.18StopThenPlayHoldStatsAB] " .. message
     )
 end
 
@@ -7843,15 +7843,17 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.17 / Leon-fingerprint "
-            .. "play-and-hold A/B report",
+        "KH1FM Enemy Config v4.4.18 / stop-then-play-and-hold "
+            .. "+ stats A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first selected private SCD is opened, allocated, "
-            .. "copied, registered, and played exactly once. It is never "
-            .. "automatically faded or detached and remains active until "
-            .. "the game process exits. The wrapper's preliminary "
-            .. "immediate-stop call is erased; replay, cache activation, "
-            .. "fade/detach, and cleanup are unreachable.",
+            .. "copied, and registered. Its configured BGM slot is stopped "
+            .. "exactly once before the private SCD is played exactly once. "
+            .. "It is never automatically faded or detached and remains "
+            .. "active until the game process exits. Replay, cache "
+            .. "activation, fade/detach, and cleanup are unreachable.",
+        "Stats: enemy HP, damage-taken, animation-speed, and movement-speed "
+            .. "processing are enabled from the editable enemy table.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -8663,19 +8665,19 @@ function SETTINGS._installRegisterStage(bgmId)
     if frameCode == nil then
         return false, reason
     end
-    if SETTINGS.DIAGNOSTIC_PLAY_ONCE then
-        -- In the stock v4.4.8 wrapper, successful registration falls through
-        -- at 0x92 into a native stop call, followed by the actual play call at
-        -- 0x9C. Erase only the ten-byte stop block. Registration, the single
-        -- play call, and completion remain unchanged; later Lua routing makes
-        -- replay, switching, fade, detach, and cleanup unreachable.
+    if SETTINGS.DIAGNOSTIC_SKIP_PREPLAY_STOP then
+        -- Optional comparison boundary retained from v4.4.14-v4.4.17.
+        -- Successful registration normally falls through at 0x92 into a
+        -- native stop call, followed by the play call at 0x9C. Erasing that
+        -- stop leaves an already-active slot occupied, so KH1's play routine
+        -- can return without creating the private stream.
         if frameCode[0x92 + 1] ~= 0xB9
             or frameCode[0x97 + 1] ~= 0xE8
             or frameCode[0x9C + 1] ~= 0xB9
             or frameCode[0xC5 + 1] ~= 0xE8
         then
             return false,
-                "play-once stop/play-boundary signature mismatch"
+                "skip-stop stop/play-boundary signature mismatch"
         end
         for offset = 0x92, 0x9B do
             frameCode[offset + 1] = 0x90
@@ -8684,7 +8686,7 @@ function SETTINGS._installRegisterStage(bgmId)
     local ok
     ok, reason = writeArrayChecked(frameCodeRva, frameCode)
     if not ok then
-        return false, "play-once stage install failed: " .. reason
+        return false, "stop-then-play stage install failed: " .. reason
     end
     SETTINGS._frameStage = "register"
     return true
@@ -9734,7 +9736,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.17 unreachable diagnostic fade/detach safeguard"
+                "v4.4.18 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -10078,7 +10080,8 @@ function SETTINGS._processPrivateScdTransfer()
         addTimeline(string.format(
             "PRIVATE SCD COPY VERIFIED tick=%u seconds=%.3f "
                 .. "enemy=%s bytes=%u; PLAY-ONCE QUEUED "
-                .. "runtime=%s resource_class=%u; native stop erased",
+                .. "runtime=%s resource_class=%u; one native stop then one "
+                .. "private play queued",
             tick,
             tick / 60,
             theme.name,
@@ -10270,7 +10273,8 @@ function SETTINGS._processDispatchCounter()
             "READY: DIAGNOSTIC PRIVATE SCD PLAY COMPLETE "
                 .. "tick=%u seconds=%.3f enemy=%s resource_class=%u "
                 .. "bytes=%u buffer=0x%X resource=0x%08X; "
-                .. "one play issued; no automatic fade/detach; "
+                .. "one slot stop and one private play issued; "
+                .. "no automatic fade/detach; "
                 .. "resource held until full game exit; replay and later "
                 .. "lifecycle commands blocked",
             tick,
@@ -10626,17 +10630,16 @@ function SETTINGS._privateThemeInit()
         false
     )
     addStatus(
-        "Playback isolation: the register-stage native stop call is erased, "
-            .. "but its single native play call remains active. Automatic "
-            .. "fade/detach, replay, cache activation, additional lifecycle "
-            .. "commands, and freeing are disabled.",
+        "Playback isolation: registration is followed by exactly one native "
+            .. "stop of the selected BGM slot and exactly one private play. "
+            .. "Automatic fade/detach, replay, cache activation, additional "
+            .. "lifecycle commands, and freeing are disabled.",
         false
     )
     addStatus(
-        "Test safety: native music may overlap because the preliminary stop "
-            .. "is intentionally disabled. After the play-complete message, "
-            .. "remain in the encounter long enough to determine whether "
-            .. "the private audio ever becomes audible, then fully exit "
+        "Test behavior: the original music on the selected slot should stop "
+            .. "before the private theme begins. After the play-complete "
+            .. "message, listen for at least 30 seconds and then fully exit "
             .. "the game.",
         false
     )
@@ -10869,10 +10872,11 @@ function SETTINGS._privateThemeInit()
         true
     )
     addStatus(
-        "READY: play-and-hold A/B active. Lock onto Leon and wait for "
-            .. "DIAGNOSTIC PRIVATE SCD PLAY COMPLETE, then listen for at "
-            .. "least 30 seconds. No automatic fade/detach will occur. Use "
-            .. "a full game restart instead of F1.",
+        "READY: stop-then-play-and-hold + stats A/B active. Lock onto Leon "
+            .. "and wait for DIAGNOSTIC PRIVATE SCD PLAY COMPLETE, then "
+            .. "listen for at least 30 seconds. Leon's configured 999 HP "
+            .. "and speed values are active. No automatic fade/detach will "
+            .. "occur. Use a full game restart instead of F1.",
         true
     )
     saveReport()
@@ -10968,22 +10972,22 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Diagnostic isolation: do not initialize the enemy-stat/damage/speed
-    -- subsystem. A full process restart restores the executable before this
-    -- file loads, while the theme dispatcher continues to reserve the stat
-    -- subsystem's verified cave.
+    -- The stats module was intentionally disabled in v4.4.9-v4.4.17. It is
+    -- restored here so configured HP, damage, and speed values can be
+    -- verified alongside the one-shot audio route.
+    statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.17LeonPlayHoldAB] READY: Leon's "
-            .. "verified fingerprint plus one real private-SCD "
-            .. "allocation/copy/registration/play-and-hold route is active; "
-            .. "automatic fade/detach, replay, and additional lifecycle commands, "
-            .. "enemy HP, "
-            .. "damage-taken, animation-speed, movement-speed, and broad "
-            .. "stats discovery are disabled."
+        "[EnemyConfigV4.4.18StopThenPlayHoldStatsAB] READY: Leon's "
+            .. "verified fingerprint plus one private-SCD allocation/copy/"
+            .. "registration/slot-stop/play-and-hold route is active. Enemy "
+            .. "HP, damage-taken, animation-speed, and movement-speed are "
+            .. "enabled; automatic fade/detach, replay, and additional "
+            .. "audio lifecycle commands are disabled."
     )
 end
 
 function _OnFrame()
+    statsModule.frame()
     privateThemeModule.frame()
 end
