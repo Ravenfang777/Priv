@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_11_IdleAudioHookAB.lua
+-- File: KHFM_EnemyConfig_v4_4_12_AllocateCopyOnlyAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.11 IDLE-AUDIO-HOOK A/B.
+-- v4.4.12 ALLOCATE/COPY-ONLY A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -22,7 +22,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: idle native audio hook active; private SCD lifecycle disabled"
+LUAGUI_DESC = "A/B test: allocate and copy one private SCD; registration/playback disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -364,9 +364,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_11_Idle_Audio_Hook_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_12_Allocate_Copy_Only_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_11_Idle_Audio_Hook_AB_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_12_Allocate_Copy_Only_AB_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -4052,7 +4052,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.11 Idle-audio-hook A/B / Stats report",
+        "KHFM Enemy Config v4.4.12 Allocate/copy-only A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -7232,11 +7232,12 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.11 split: install and run the exact native frame-hook
-    -- allocation-stage image, but never publish a dispatch command. Target
-    -- scanning remains active while SCD file reads, buffer allocation,
-    -- resource registration, playback, fade, and detachment stay disabled.
-    DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY = true,
+    -- Diagnostic v4.4.12 split: use the exact native allocation-stage image,
+    -- open one selected private SCD, allocate its native buffer, and copy the
+    -- complete file once. Never register that buffer with KH1's file manager
+    -- and never issue play, fade, detach, cache, or resource-free commands.
+    DIAGNOSTIC_ALLOCATE_COPY_ONLY = true,
+    DIAGNOSTIC_MAX_COPIES = 1,
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
@@ -7255,7 +7256,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_11_Idle_Audio_Hook_AB_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_12_Allocate_Copy_Only_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7777,7 +7778,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.11IdleAudioHookAB] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.12AllocateCopyOnlyAB] " .. message)
 end
 
 function SETTINGS._importantReportMessage(message)
@@ -7827,12 +7828,12 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.11 / Idle-audio-hook A/B report",
+        "KH1FM Enemy Config v4.4.12 / Allocate/copy-only A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
-        "Playback: intentionally disabled for this diagnostic. The exact "
-            .. "native frame-hook allocation-stage image is installed and "
-            .. "runs with command=0, but no SCD file is opened, copied, "
-            .. "allocated, registered, played, faded, or detached.",
+        "Playback: intentionally disabled. The first selected private SCD is "
+            .. "opened, allocated, and copied completely into one retained "
+            .. "native buffer. Registration, playback, cache activation, "
+            .. "fade, detachment, and resource cleanup are never invoked.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -9680,7 +9681,7 @@ end
 
 function SETTINGS._updatePresenceAndRoute()
     local selected = SETTINGS._selectActiveThemeEvidence()
-    if SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
+    if SETTINGS.DIAGNOSTIC_ALLOCATE_COPY_ONLY then
         if selected == nil then
             if activeEnemy ~= nil then
                 addTimeline(string.format(
@@ -9697,7 +9698,7 @@ function SETTINGS._updatePresenceAndRoute()
         if activeEnemy ~= selected.profile.name then
             addTimeline(string.format(
                 "SCAN MATCH CONFIRMED tick=%u seconds=%.3f enemy=%s "
-                    .. "match=%s; idle audio hook command remains zero",
+                    .. "match=%s; allocation/copy test selected",
                 tick,
                 tick / 60,
                 selected.profile.name,
@@ -9706,6 +9707,28 @@ function SETTINGS._updatePresenceAndRoute()
         end
         activeEnemy = selected.profile.name
         activeTheme = selected.profile
+        if activeTheme.diagnosticCopied
+            or pendingTheme ~= nil
+            or activeSwitchQueued
+        then
+            return
+        end
+        if (SETTINGS._diagnosticCopyCount or 0)
+            >= SETTINGS.DIAGNOSTIC_MAX_COPIES
+        then
+            if not activeTheme.diagnosticSkipped then
+                activeTheme.diagnosticSkipped = true
+                addTimeline(string.format(
+                    "DIAGNOSTIC COPY SKIPPED tick=%u seconds=%.3f "
+                        .. "enemy=%s reason=one-copy limit already reached",
+                    tick,
+                    tick / 60,
+                    activeTheme.name
+                ), true)
+            end
+            return
+        end
+        SETTINGS._queueThemeSwitch(activeTheme)
         return
     end
     if selected == nil then
@@ -9967,6 +9990,46 @@ function SETTINGS._processPrivateScdTransfer()
         return
     end
 
+    if SETTINGS.DIAGNOSTIC_ALLOCATE_COPY_ONLY then
+        ok, reason = writeIntChecked(
+            dataRva + DATA_DISPATCH_COMMAND_OFFSET,
+            0
+        )
+        if ok then
+            ok, reason = writeIntChecked(
+                dataRva + DATA_DISPATCH_STATUS_OFFSET,
+                0
+            )
+        end
+        if not ok then
+            SETTINGS._failPrivateTheme(reason)
+            return
+        end
+
+        theme.diagnosticCopied = true
+        theme.diagnosticBuffer = buffer
+        theme.diagnosticSkipped = false
+        SETTINGS._diagnosticCopyCount =
+            (SETTINGS._diagnosticCopyCount or 0) + 1
+        SETTINGS._diagnosticRetainedBytes =
+            (SETTINGS._diagnosticRetainedBytes or 0) + theme.size
+        pendingTheme = nil
+        pendingMode = nil
+        activeSwitchQueued = false
+        SETTINGS._copyOffset = 0
+        addTimeline(string.format(
+            "READY: DIAGNOSTIC PRIVATE SCD COPY COMPLETE "
+                .. "tick=%u seconds=%.3f enemy=%s bytes=%u "
+                .. "buffer=0x%X; registration/playback blocked",
+            tick,
+            tick / 60,
+            theme.name,
+            theme.size,
+            buffer
+        ), true)
+        return
+    end
+
     ok, reason = SETTINGS._installRegisterStage(theme.bgmId)
     if not ok then
         SETTINGS._failPrivateTheme(reason)
@@ -10221,9 +10284,7 @@ end
 -- =========================================================================
 
 function SETTINGS._prepareThemeCatalog()
-    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
-        and (SCRIPT_PATH == nil or io == nil or io.open == nil)
-    then
+    if SCRIPT_PATH == nil or io == nil or io.open == nil then
         return false, "Lua script path or file access is unavailable"
     end
 
@@ -10241,11 +10302,8 @@ function SETTINGS._prepareThemeCatalog()
         names[#names + 1] = name
     end
     table.sort(names)
-    local separator = "/"
-    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
-        separator = string.find(SCRIPT_PATH, "\\", 1, true)
-            and "\\" or "/"
-    end
+    local separator = string.find(SCRIPT_PATH, "\\", 1, true)
+        and "\\" or "/"
 
     for index, name in ipairs(names) do
         local filename = ENEMY_CONFIG[name].BATTLE_THEME
@@ -10267,14 +10325,8 @@ function SETTINGS._prepareThemeCatalog()
                     true
                 )
             else
-                local fullPath =
-                    SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
-                    and ""
-                    or (SCRIPT_PATH .. separator .. filename)
-                local file =
-                    SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
-                    and true
-                    or io.open(fullPath, "rb")
+                local fullPath = SCRIPT_PATH .. separator .. filename
+                local file = io.open(fullPath, "rb")
                 if file == nil then
                     addStatus(
                         "THEME DISABLED: " .. name
@@ -10282,17 +10334,9 @@ function SETTINGS._prepareThemeCatalog()
                         true
                     )
                 else
-                    local magic =
-                        SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
-                        and "SEDBSSCF"
-                        or file:read(8)
-                    local size =
-                        SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
-                        and 0x100
-                        or file:seek("end")
-                    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
-                        file:close()
-                    end
+                    local magic = file:read(8)
+                    local size = file:seek("end")
+                    file:close()
                     if magic ~= "SEDBSSCF"
                         or type(size) ~= "number"
                         or size < 0x100
@@ -10326,6 +10370,9 @@ function SETTINGS._prepareThemeCatalog()
                             node = nil,
                             detached = false,
                             activations = 0,
+                            diagnosticCopied = false,
+                            diagnosticBuffer = nil,
+                            diagnosticSkipped = false,
                         }
                         SETTINGS.THEMES[name] = theme
                         SETTINGS.THEME_ORDER[
@@ -10404,6 +10451,8 @@ function SETTINGS._resetPrivateThemeState()
     end
     SETTINGS._copyFile = nil
     SETTINGS._copyOffset = 0
+    SETTINGS._diagnosticCopyCount = 0
+    SETTINGS._diagnosticRetainedBytes = 0
     SETTINGS._frameStage = "none"
     enabled = false
     tick = 0
@@ -10465,15 +10514,15 @@ end
 function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
-        "A/B route: the exact native frame-hook allocation-stage image is "
-            .. "installed, but its dispatch command remains zero for the "
-            .. "entire test.",
+        "A/B route: the first verified configured target opens its real "
+            .. "private SCD, requests one native aligned buffer, and copies "
+            .. "the complete file into that buffer.",
         false
     )
     addStatus(
-        "Resource isolation: no private SCD is opened, copied, allocated, "
-            .. "registered, played, faded, or detached; native music remains "
-            .. "untouched.",
+        "Resource isolation: the copied buffer is retained until process "
+            .. "exit but is never registered, played, cached, faded, "
+            .. "detached, or freed; native music remains untouched.",
         false
     )
     addStatus(
@@ -10686,14 +10735,14 @@ function SETTINGS._privateThemeInit()
     addStatus("READY: " .. hookReason .. ".", true)
     addStatus(
         "READY: " .. tostring(SETTINGS.VALID_THEME_COUNT)
-            .. " private theme row(s) compiled for identity matching "
-            .. "without opening their SCD files.",
+            .. " private theme row(s) validated from their real SCD files.",
         true
     )
     addStatus(
-        "READY: idle audio hook A/B active. Native music should remain "
-            .. "unchanged. Test the same gameplay route and note whether "
-            .. "stutter returns. Use a full game restart instead of F1.",
+        "READY: allocate/copy-only A/B active. Lock onto one configured "
+            .. "enemy and wait for DIAGNOSTIC PRIVATE SCD COPY COMPLETE. "
+            .. "Native music should remain unchanged. Use a full game "
+            .. "restart instead of F1.",
         true
     )
     saveReport()
@@ -10761,10 +10810,8 @@ function SETTINGS._privateThemeFrame()
     if not enabled then
         return
     end
-    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
-        SETTINGS._processDispatchCounter()
-        SETTINGS._processPrivateScdTransfer()
-    end
+    SETTINGS._processDispatchCounter()
+    SETTINGS._processPrivateScdTransfer()
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10797,9 +10844,9 @@ function _OnInit()
     -- subsystem's verified cave.
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.11IdleAudioHookAB] READY: exact private-theme "
-            .. "target scanning and the idle native frame-dispatch hook are "
-            .. "active; every SCD resource/playback command, enemy HP, "
+        "[EnemyConfigV4.4.12AllocateCopyOnlyAB] READY: exact target scanning "
+            .. "plus one real private-SCD allocation/copy are active; "
+            .. "registration, playback, fade/detach, enemy HP, "
             .. "damage-taken, animation-speed, movement-speed, and broad "
             .. "stats discovery are disabled."
     )
