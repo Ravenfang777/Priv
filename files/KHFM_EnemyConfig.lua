@@ -39,7 +39,7 @@ LUAGUI_DESC = "Per-enemy HP, speed, and private battle themes without native mus
 
 local ENEMY_SETTINGS = {
     ["Shadow"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
     ["Soldier"] = { 
         MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = nil },
     ["Powerwild"] = { 
