@@ -1,10 +1,11 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_19_StatsOnlyAB.lua
+-- File: KHFM_EnemyConfig_v4_4_20_StatsNoSpeedAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.19 STATS-ONLY A/B.
+-- v4.4.20 STATS WITHOUT SPEED A/B.
 --
 -- Diagnostic boundary:
---   * Enemy HP, damage-taken, animation-speed, and movement-speed are active.
+--   * Enemy HP, damage-taken, graph discovery, and candidate refresh are active.
+--   * Animation-speed and movement-speed processing are bypassed at runtime.
 --   * The private-theme module is not constructed or initialized.
 --   * No private-audio hook, SCD file access, allocation, copy, registration,
 --     slot stop, playback, fade, detach, cache, or cleanup can run.
@@ -28,7 +29,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: enemy stats and speed only; private audio disabled"
+LUAGUI_DESC = "A/B test: HP and damage active; enemy speed and private audio disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -370,9 +371,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_19_Stats_Only_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_20_Stats_No_Speed_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_19_Stats_Only_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_20_Stats_No_Speed_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1121,6 +1122,10 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
+        -- One-variable v4.4.20 A/B gate. All configured speed values remain
+        -- untouched in the user table, but the per-frame animation/movement
+        -- processor is unreachable during this diagnostic.
+        DIAGNOSTIC_DISABLE_SPEED = true,
         ENABLE = SHARED.ENABLE,
         GLOBAL = SHARED.STATS_DEFAULTS,
         ENABLE_CONFIRMED_TARGET_FALLBACK =
@@ -4065,8 +4070,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.18 stop-then-play-and-hold "
-            .. "+ stats A/B / Stats report",
+        "KHFM Enemy Config v4.4.20 stats-without-speed A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4093,10 +4097,11 @@ function SETTINGS._combinedStatsInit()
         tostring(SETTINGS.ENABLE_CONFIRMED_TARGET_FALLBACK)
     ), false)
     record(string.format(
-        "Configured speed engine: animation_enabled=%s "
+        "Saved speed configuration (runtime bypassed=%s): animation_enabled=%s "
             .. "world_movement_enabled=%s native_default=%.3f "
             .. "allow_unidentified=%s max=10.000 motion_logging=%s "
             .. "movement_axis=X/Z warp_limit=%.3f transform_copies=%u",
+        tostring(SETTINGS.DIAGNOSTIC_DISABLE_SPEED),
         tostring(SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.ENABLE),
         tostring(
             SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
@@ -4191,14 +4196,9 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        SETTINGS.EXPERIMENTAL_ANIMATION_SPEED.ENABLE
-            and (
-                SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
-                    .ALLOW_CONFIRMED_TARGET_FALLBACK
-                and "Configured per-animation/overall speed scales animation and X/Z world movement for named and explicitly enabled fallback targets."
-                or "Configured per-animation/overall speed scales animation and X/Z world movement for named targets; unidentified targets remain native."
-            )
-            or "Experimental speed is read-only; ENEMY MOTION OBSERVED lines perform no writes.",
+        "V4.4.20 A/B: animation-speed and X/Z movement-speed processing are "
+            .. "fully bypassed. Configured speed values remain preserved but "
+            .. "cannot read or write enemy motion in this build.",
         true
     )
     record(
@@ -4254,7 +4254,9 @@ function SETTINGS._combinedStatsFrame()
     -- Refresh after captured-damage telemetry so candidate.hp still represents
     -- the previous observed frame when observed_HP_loss is calculated.
     refreshCandidates()
-    updateSafeAnimationSpeeds()
+    if not SETTINGS.DIAGNOSTIC_DISABLE_SPEED then
+        updateSafeAnimationSpeeds()
+    end
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10974,16 +10976,17 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.19 A/B boundary: construct and run only the stats module.
+    -- Strict v4.4.20 A/B boundary: construct and run only the stats module,
+    -- with its animation/movement-speed processor bypassed.
     -- buildPrivateThemeModule() remains in the source for byte-comparison
     -- against v4.4.18, but it is never called. Therefore no private-audio
     -- native hook or resource lifecycle can initialize.
     statsModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.19StatsOnlyAB] READY: enemy HP, damage-taken, "
-            .. "animation-speed, and movement-speed are enabled. The entire "
-            .. "private-theme subsystem is inactive; native music remains "
-            .. "unchanged."
+        "[EnemyConfigV4.4.20StatsNoSpeedAB] READY: enemy HP and "
+            .. "damage-taken are enabled. Animation speed, movement speed, "
+            .. "and the entire private-theme subsystem are inactive; native "
+            .. "enemy motion and music remain unchanged."
     )
 end
 
