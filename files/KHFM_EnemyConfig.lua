@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_16_LeonFingerprintPlayFadeAB.lua
+-- File: KHFM_EnemyConfig_v4_4_17_LeonPlayHoldAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.16 LEON-FINGERPRINT PLAY-THEN-FADE/DETACH-ONCE A/B.
+-- v4.4.17 LEON-FINGERPRINT PLAY-AND-HOLD A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -22,7 +22,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: play, then fade/detach one private SCD once"
+LUAGUI_DESC = "A/B test: play one private SCD and hold until game exit"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -364,9 +364,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_13_Register_Only_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_17_Leon_Play_Hold_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_13_Register_Only_AB_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_17_Leon_Play_Hold_AB_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -4059,8 +4059,8 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.16 Leon-fingerprint "
-            .. "play/fade-detach-once A/B / Stats report",
+        "KHFM Enemy Config v4.4.17 Leon-fingerprint "
+            .. "play-and-hold A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -7240,15 +7240,15 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.16 split: identify Leon directly by his verified
+    -- Diagnostic v4.4.17 split: identify Leon directly by his verified
     -- fingerprint, then allocate, copy, register, and play one
-    -- selected private SCD exactly once. Five seconds after the completed
-    -- play, issue exactly one native fade/detach command. The wrapper's
-    -- preliminary immediate-stop call remains erased, and replay, cache
-    -- activation, a second fade/detach, and freeing are unreachable.
+    -- selected private SCD exactly once. Leave it active until the game
+    -- process exits. The wrapper's preliminary immediate-stop call remains
+    -- erased, and replay, fade, detach, cache activation, and freeing are
+    -- unreachable.
     DIAGNOSTIC_PLAY_ONCE = true,
     DIAGNOSTIC_MAX_PLAYS = 1,
-    DIAGNOSTIC_FADE_DETACH_ONCE = true,
+    DIAGNOSTIC_FADE_DETACH_ONCE = false,
     DIAGNOSTIC_FADE_DELAY_TICKS = 300,
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
@@ -7269,7 +7269,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_16_Leon_Fingerprint_Play_Fade_AB_Report.txt",
+        "KHFM_EnemyConfig_v4_4_17_Leon_Play_Hold_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7792,7 +7792,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.16LeonFingerprintPlayFadeAB] " .. message
+        "[EnemyConfigV4.4.17LeonPlayHoldAB] " .. message
     )
 end
 
@@ -7843,15 +7843,15 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.16 / Leon-fingerprint "
-            .. "play/fade-detach-once A/B report",
+        "KH1FM Enemy Config v4.4.17 / Leon-fingerprint "
+            .. "play-and-hold A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first selected private SCD is opened, allocated, "
-            .. "copied, registered, and played exactly once. Five seconds "
-            .. "later it is faded and detached exactly once. The wrapper's "
-            .. "preliminary immediate-stop call is erased; replay, cache "
-            .. "activation, a second fade/detach, and cleanup are "
-            .. "unreachable.",
+            .. "copied, registered, and played exactly once. It is never "
+            .. "automatically faded or detached and remains active until "
+            .. "the game process exits. The wrapper's preliminary "
+            .. "immediate-stop call is erased; replay, cache activation, "
+            .. "fade/detach, and cleanup are unreachable.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -9734,7 +9734,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.16 one-time diagnostic fade/detach"
+                "v4.4.17 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -9754,7 +9754,7 @@ function SETTINGS._updatePresenceAndRoute()
         if activeEnemy ~= selected.profile.name then
             addTimeline(string.format(
                 "SCAN MATCH CONFIRMED tick=%u seconds=%.3f enemy=%s "
-                    .. "match=%s; play/fade-detach-once test selected",
+                    .. "match=%s; play-and-hold test selected",
                 tick,
                 tick / 60,
                 selected.profile.name,
@@ -10270,8 +10270,9 @@ function SETTINGS._processDispatchCounter()
             "READY: DIAGNOSTIC PRIVATE SCD PLAY COMPLETE "
                 .. "tick=%u seconds=%.3f enemy=%s resource_class=%u "
                 .. "bytes=%u buffer=0x%X resource=0x%08X; "
-                .. "one play issued; one fade/detach will run after %u ticks; "
-                .. "replay and later lifecycle commands blocked",
+                .. "one play issued; no automatic fade/detach; "
+                .. "resource held until full game exit; replay and later "
+                .. "lifecycle commands blocked",
             tick,
             tick / 60,
             completed ~= nil and completed.name or "none",
@@ -10279,8 +10280,7 @@ function SETTINGS._processDispatchCounter()
                 and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
             completed ~= nil and completed.size or 0,
             lastLoadBuffer,
-            lastTargetResource,
-            SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS
+            lastTargetResource
         ), true)
         return
     end
@@ -10627,18 +10627,17 @@ function SETTINGS._privateThemeInit()
     )
     addStatus(
         "Playback isolation: the register-stage native stop call is erased, "
-            .. "but its single native play call remains active. One timed "
-            .. "fade/detach follows after "
-            .. tostring(SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS)
-            .. " ticks; replay, cache activation, additional lifecycle "
+            .. "but its single native play call remains active. Automatic "
+            .. "fade/detach, replay, cache activation, additional lifecycle "
             .. "commands, and freeing are disabled.",
         false
     )
     addStatus(
         "Test safety: native music may overlap because the preliminary stop "
-            .. "is intentionally disabled. Observe playback until the "
-            .. "automatic fade/detach completion message, then remain in the "
-            .. "same encounter briefly before fully exiting the game.",
+            .. "is intentionally disabled. After the play-complete message, "
+            .. "remain in the encounter long enough to determine whether "
+            .. "the private audio ever becomes audible, then fully exit "
+            .. "the game.",
         false
     )
     addStatus(
@@ -10870,11 +10869,10 @@ function SETTINGS._privateThemeInit()
         true
     )
     addStatus(
-        "READY: play/fade-detach-once A/B active. Lock onto one configured "
-            .. "enemy and wait for both DIAGNOSTIC PRIVATE SCD PLAY COMPLETE "
-            .. "and DIAGNOSTIC PRIVATE SCD FADE/DETACH COMPLETE. The second "
-            .. "event follows five seconds after the first. Use a full game "
-            .. "restart instead of F1.",
+        "READY: play-and-hold A/B active. Lock onto Leon and wait for "
+            .. "DIAGNOSTIC PRIVATE SCD PLAY COMPLETE, then listen for at "
+            .. "least 30 seconds. No automatic fade/detach will occur. Use "
+            .. "a full game restart instead of F1.",
         true
     )
     saveReport()
@@ -10976,10 +10974,10 @@ function _OnInit()
     -- subsystem's verified cave.
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.16LeonFingerprintPlayFadeAB] READY: Leon's "
+        "[EnemyConfigV4.4.17LeonPlayHoldAB] READY: Leon's "
             .. "verified fingerprint plus one real private-SCD "
-            .. "allocation/copy/registration/play and one timed fade/detach "
-            .. "are active; replay and additional lifecycle commands, "
+            .. "allocation/copy/registration/play-and-hold route is active; "
+            .. "automatic fade/detach, replay, and additional lifecycle commands, "
             .. "enemy HP, "
             .. "damage-taken, animation-speed, movement-speed, and broad "
             .. "stats discovery are disabled."
