@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_12_AllocateCopyOnlyAB.lua
+-- File: KHFM_EnemyConfig_v4_4_13_RegisterOnlyAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.12 ALLOCATE/COPY-ONLY A/B.
+-- v4.4.13 REGISTER-ONLY A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -22,7 +22,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: allocate and copy one private SCD; registration/playback disabled"
+LUAGUI_DESC = "A/B test: register one private SCD; playback/fade disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -364,9 +364,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_12_Allocate_Copy_Only_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_13_Register_Only_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_12_Allocate_Copy_Only_AB_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_13_Register_Only_AB_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -4052,7 +4052,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.12 Allocate/copy-only A/B / Stats report",
+        "KHFM Enemy Config v4.4.13 Register-only A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -7232,12 +7232,13 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.12 split: use the exact native allocation-stage image,
-    -- open one selected private SCD, allocate its native buffer, and copy the
-    -- complete file once. Never register that buffer with KH1's file manager
-    -- and never issue play, fade, detach, cache, or resource-free commands.
-    DIAGNOSTIC_ALLOCATE_COPY_ONLY = true,
-    DIAGNOSTIC_MAX_COPIES = 1,
+    -- Diagnostic v4.4.13 split: allocate and copy one selected private SCD,
+    -- then register it once with the live BGM resource manager. The native
+    -- register-stage playback block is replaced with an unconditional jump
+    -- to completion, so no stop, play, cache, fade, detach, or free command
+    -- can execute. The resource remains registered until process exit.
+    DIAGNOSTIC_REGISTER_ONLY = true,
+    DIAGNOSTIC_MAX_REGISTRATIONS = 1,
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
@@ -7256,7 +7257,7 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_12_Allocate_Copy_Only_AB_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_13_Register_Only_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7778,7 +7779,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.12AllocateCopyOnlyAB] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.13RegisterOnlyAB] " .. message)
 end
 
 function SETTINGS._importantReportMessage(message)
@@ -7828,11 +7829,11 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.12 / Allocate/copy-only A/B report",
+        "KH1FM Enemy Config v4.4.13 / Register-only A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: intentionally disabled. The first selected private SCD is "
-            .. "opened, allocated, and copied completely into one retained "
-            .. "native buffer. Registration, playback, cache activation, "
+            .. "opened, allocated, copied, and registered exactly once. The "
+            .. "native stop/play block is unreachable; cache activation, "
             .. "fade, detachment, and resource cleanup are never invoked.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
@@ -8645,10 +8646,29 @@ function SETTINGS._installRegisterStage(bgmId)
     if frameCode == nil then
         return false, reason
     end
+    if SETTINGS.DIAGNOSTIC_REGISTER_ONLY then
+        -- In the stock v4.4.8 wrapper, successful registration falls through
+        -- at 0x92 into native stop/play calls and reaches the completion
+        -- counter at 0xCA. Replace that fallthrough with JMP +0x36 and erase
+        -- the bypassed block. Registration and file-manager unlock remain
+        -- unchanged; deliberate playback is structurally unreachable.
+        if frameCode[0x92 + 1] ~= 0xB9
+            or frameCode[0xCA + 1] ~= 0xF0
+            or frameCode[0xCB + 1] ~= 0xFF
+        then
+            return false,
+                "register-only playback-boundary signature mismatch"
+        end
+        frameCode[0x92 + 1] = 0xEB
+        frameCode[0x93 + 1] = 0x36
+        for offset = 0x94, 0xC9 do
+            frameCode[offset + 1] = 0x90
+        end
+    end
     local ok
     ok, reason = writeArrayChecked(frameCodeRva, frameCode)
     if not ok then
-        return false, "register/play stage install failed: " .. reason
+        return false, "register-only stage install failed: " .. reason
     end
     SETTINGS._frameStage = "register"
     return true
@@ -9681,7 +9701,7 @@ end
 
 function SETTINGS._updatePresenceAndRoute()
     local selected = SETTINGS._selectActiveThemeEvidence()
-    if SETTINGS.DIAGNOSTIC_ALLOCATE_COPY_ONLY then
+    if SETTINGS.DIAGNOSTIC_REGISTER_ONLY then
         if selected == nil then
             if activeEnemy ~= nil then
                 addTimeline(string.format(
@@ -9698,7 +9718,7 @@ function SETTINGS._updatePresenceAndRoute()
         if activeEnemy ~= selected.profile.name then
             addTimeline(string.format(
                 "SCAN MATCH CONFIRMED tick=%u seconds=%.3f enemy=%s "
-                    .. "match=%s; allocation/copy test selected",
+                    .. "match=%s; registration-only test selected",
                 tick,
                 tick / 60,
                 selected.profile.name,
@@ -9707,20 +9727,21 @@ function SETTINGS._updatePresenceAndRoute()
         end
         activeEnemy = selected.profile.name
         activeTheme = selected.profile
-        if activeTheme.diagnosticCopied
+        if activeTheme.diagnosticRegistered
             or pendingTheme ~= nil
             or activeSwitchQueued
         then
             return
         end
-        if (SETTINGS._diagnosticCopyCount or 0)
-            >= SETTINGS.DIAGNOSTIC_MAX_COPIES
+        if (SETTINGS._diagnosticRegistrationCount or 0)
+            >= SETTINGS.DIAGNOSTIC_MAX_REGISTRATIONS
         then
             if not activeTheme.diagnosticSkipped then
                 activeTheme.diagnosticSkipped = true
                 addTimeline(string.format(
-                    "DIAGNOSTIC COPY SKIPPED tick=%u seconds=%.3f "
-                        .. "enemy=%s reason=one-copy limit already reached",
+                    "DIAGNOSTIC REGISTRATION SKIPPED tick=%u seconds=%.3f "
+                        .. "enemy=%s reason=one-registration limit "
+                        .. "already reached",
                     tick,
                     tick / 60,
                     activeTheme.name
@@ -9990,44 +10011,10 @@ function SETTINGS._processPrivateScdTransfer()
         return
     end
 
-    if SETTINGS.DIAGNOSTIC_ALLOCATE_COPY_ONLY then
-        ok, reason = writeIntChecked(
-            dataRva + DATA_DISPATCH_COMMAND_OFFSET,
-            0
-        )
-        if ok then
-            ok, reason = writeIntChecked(
-                dataRva + DATA_DISPATCH_STATUS_OFFSET,
-                0
-            )
-        end
-        if not ok then
-            SETTINGS._failPrivateTheme(reason)
-            return
-        end
-
+    if SETTINGS.DIAGNOSTIC_REGISTER_ONLY then
         theme.diagnosticCopied = true
         theme.diagnosticBuffer = buffer
         theme.diagnosticSkipped = false
-        SETTINGS._diagnosticCopyCount =
-            (SETTINGS._diagnosticCopyCount or 0) + 1
-        SETTINGS._diagnosticRetainedBytes =
-            (SETTINGS._diagnosticRetainedBytes or 0) + theme.size
-        pendingTheme = nil
-        pendingMode = nil
-        activeSwitchQueued = false
-        SETTINGS._copyOffset = 0
-        addTimeline(string.format(
-            "READY: DIAGNOSTIC PRIVATE SCD COPY COMPLETE "
-                .. "tick=%u seconds=%.3f enemy=%s bytes=%u "
-                .. "buffer=0x%X; registration/playback blocked",
-            tick,
-            tick / 60,
-            theme.name,
-            theme.size,
-            buffer
-        ), true)
-        return
     end
 
     ok, reason = SETTINGS._installRegisterStage(theme.bgmId)
@@ -10051,18 +10038,32 @@ function SETTINGS._processPrivateScdTransfer()
         SETTINGS._failPrivateTheme(reason)
         return
     end
-    addTimeline(string.format(
-        "PRIVATE SCD COPY VERIFIED tick=%u seconds=%.3f "
-            .. "enemy=%s bytes=%u; REGISTRATION QUEUED "
-            .. "runtime=%s resource_class=%u slot=%u",
-        tick,
-        tick / 60,
-        theme.name,
-        SETTINGS._copyOffset,
-        theme.runtimeName,
-        theme.bgmId,
-        theme.bgmId
-    ), true)
+    if SETTINGS.DIAGNOSTIC_REGISTER_ONLY then
+        addTimeline(string.format(
+            "PRIVATE SCD COPY VERIFIED tick=%u seconds=%.3f "
+                .. "enemy=%s bytes=%u; REGISTRATION-ONLY QUEUED "
+                .. "runtime=%s resource_class=%u; stop/play block erased",
+            tick,
+            tick / 60,
+            theme.name,
+            SETTINGS._copyOffset,
+            theme.runtimeName,
+            theme.bgmId
+        ), true)
+    else
+        addTimeline(string.format(
+            "PRIVATE SCD COPY VERIFIED tick=%u seconds=%.3f "
+                .. "enemy=%s bytes=%u; REGISTRATION QUEUED "
+                .. "runtime=%s resource_class=%u slot=%u",
+            tick,
+            tick / 60,
+            theme.name,
+            SETTINGS._copyOffset,
+            theme.runtimeName,
+            theme.bgmId,
+            theme.bgmId
+        ), true)
+    end
 end
 
 function SETTINGS._processDispatchCounter()
@@ -10202,6 +10203,46 @@ function SETTINGS._processDispatchCounter()
 
     local completed = pendingTheme
     local completedMode = pendingMode
+    if SETTINGS.DIAGNOSTIC_REGISTER_ONLY
+        and completedMode == "load"
+    then
+        if completed ~= nil then
+            completed.loaded = true
+            completed.buffer = lastLoadBuffer
+            completed.resource = lastTargetResource
+            completed.node = nil
+            completed.detached = false
+            completed.diagnosticRegistered = true
+            completed.diagnosticBuffer = lastLoadBuffer
+            completed.diagnosticResource = lastTargetResource
+            completed.diagnosticSkipped = false
+            SETTINGS._diagnosticRegistrationCount =
+                (SETTINGS._diagnosticRegistrationCount or 0) + delta
+            SETTINGS._diagnosticRetainedBytes =
+                (SETTINGS._diagnosticRetainedBytes or 0) + completed.size
+        end
+        currentTheme = nil
+        playbackActive = false
+        stopRequested = false
+        pendingTheme = nil
+        pendingMode = nil
+        activeSwitchQueued = false
+        addTimeline(string.format(
+            "READY: DIAGNOSTIC PRIVATE SCD REGISTRATION COMPLETE "
+                .. "tick=%u seconds=%.3f enemy=%s resource_class=%u "
+                .. "bytes=%u buffer=0x%X resource=0x%08X; "
+                .. "playback/fade/detach blocked",
+            tick,
+            tick / 60,
+            completed ~= nil and completed.name or "none",
+            completed ~= nil
+                and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
+            completed ~= nil and completed.size or 0,
+            lastLoadBuffer,
+            lastTargetResource
+        ), true)
+        return
+    end
     if completedMode == "fade-detach" then
         totalPrivateStops = totalPrivateStops + delta
         local cacheRetained = status == 11
@@ -10372,6 +10413,8 @@ function SETTINGS._prepareThemeCatalog()
                             activations = 0,
                             diagnosticCopied = false,
                             diagnosticBuffer = nil,
+                            diagnosticRegistered = false,
+                            diagnosticResource = nil,
                             diagnosticSkipped = false,
                         }
                         SETTINGS.THEMES[name] = theme
@@ -10451,7 +10494,7 @@ function SETTINGS._resetPrivateThemeState()
     end
     SETTINGS._copyFile = nil
     SETTINGS._copyOffset = 0
-    SETTINGS._diagnosticCopyCount = 0
+    SETTINGS._diagnosticRegistrationCount = 0
     SETTINGS._diagnosticRetainedBytes = 0
     SETTINGS._frameStage = "none"
     enabled = false
@@ -10514,15 +10557,21 @@ end
 function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
-        "A/B route: the first verified configured target opens its real "
-            .. "private SCD, requests one native aligned buffer, and copies "
-            .. "the complete file into that buffer.",
+        "A/B route: the first verified configured target opens, allocates, "
+            .. "copies, and registers its real private SCD exactly once.",
         false
     )
     addStatus(
-        "Resource isolation: the copied buffer is retained until process "
-            .. "exit but is never registered, played, cached, faded, "
-            .. "detached, or freed; native music remains untouched.",
+        "Playback isolation: the register-stage stop/play block is replaced "
+            .. "with a direct completion jump. Cache activation, explicit "
+            .. "playback, fade, detachment, and freeing remain disabled.",
+        false
+    )
+    addStatus(
+        "Test safety: the registered resource remains in KH1's live BGM list "
+            .. "until process exit. After the completion message, observe "
+            .. "briefly without changing rooms or starting another fight, "
+            .. "then fully exit the game.",
         false
     )
     addStatus(
@@ -10739,10 +10788,10 @@ function SETTINGS._privateThemeInit()
         true
     )
     addStatus(
-        "READY: allocate/copy-only A/B active. Lock onto one configured "
-            .. "enemy and wait for DIAGNOSTIC PRIVATE SCD COPY COMPLETE. "
-            .. "Native music should remain unchanged. Use a full game "
-            .. "restart instead of F1.",
+        "READY: registration-only A/B active. Lock onto one configured enemy "
+            .. "and wait for DIAGNOSTIC PRIVATE SCD REGISTRATION COMPLETE. "
+            .. "No deliberate private-theme playback will be issued. "
+            .. "Use a full game restart instead of F1.",
         true
     )
     saveReport()
@@ -10844,9 +10893,9 @@ function _OnInit()
     -- subsystem's verified cave.
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.12AllocateCopyOnlyAB] READY: exact target scanning "
-            .. "plus one real private-SCD allocation/copy are active; "
-            .. "registration, playback, fade/detach, enemy HP, "
+        "[EnemyConfigV4.4.13RegisterOnlyAB] READY: exact target scanning "
+            .. "plus one real private-SCD allocation/copy/registration are "
+            .. "active; playback, fade/detach, enemy HP, "
             .. "damage-taken, animation-speed, movement-speed, and broad "
             .. "stats discovery are disabled."
     )
