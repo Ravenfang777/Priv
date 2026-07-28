@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_14_PlayOnceAB.lua
+-- File: KHFM_EnemyConfig_v4_4_15_PlayFadeDetachOnceAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.14 PLAY-ONCE A/B.
+-- v4.4.15 PLAY-THEN-FADE/DETACH-ONCE A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -22,7 +22,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: play one private SCD once; lifecycle disabled"
+LUAGUI_DESC = "A/B test: play, then fade/detach one private SCD once"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -4052,7 +4052,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.14 Play-once A/B / Stats report",
+        "KHFM Enemy Config v4.4.15 Play/fade-detach-once A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -7232,14 +7232,15 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.14 split: allocate, copy, and register one selected
-    -- private SCD, then invoke its native BGM play route exactly once. The
-    -- wrapper's preliminary stop call is erased so this test exercises only
-    -- the play call and sustained playback. No replay, cache activation,
-    -- fade, detach, or free command can execute afterward. The resource and
-    -- playback remain live until native game state replaces them or exit.
+    -- Diagnostic v4.4.15 split: allocate, copy, register, and play one
+    -- selected private SCD exactly once. Five seconds after the completed
+    -- play, issue exactly one native fade/detach command. The wrapper's
+    -- preliminary immediate-stop call remains erased, and replay, cache
+    -- activation, a second fade/detach, and freeing are unreachable.
     DIAGNOSTIC_PLAY_ONCE = true,
     DIAGNOSTIC_MAX_PLAYS = 1,
+    DIAGNOSTIC_FADE_DETACH_ONCE = true,
+    DIAGNOSTIC_FADE_DELAY_TICKS = 300,
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
@@ -7258,7 +7259,8 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_14_Play_Once_AB_Report.txt",
+    REPORT_FILENAME =
+        "KHFM_EnemyConfig_v4_4_15_Play_Fade_Detach_Once_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7780,7 +7782,7 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.14PlayOnceAB] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.15PlayFadeDetachOnceAB] " .. message)
 end
 
 function SETTINGS._importantReportMessage(message)
@@ -7830,12 +7832,14 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.14 / Play-once A/B report",
+        "KH1FM Enemy Config v4.4.15 / Play/fade-detach-once A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first selected private SCD is opened, allocated, "
-            .. "copied, registered, and played exactly once. The wrapper's "
-            .. "preliminary native stop call is erased; replay, cache "
-            .. "activation, fade, detachment, and cleanup are unreachable.",
+            .. "copied, registered, and played exactly once. Five seconds "
+            .. "later it is faded and detached exactly once. The wrapper's "
+            .. "preliminary immediate-stop call is erased; replay, cache "
+            .. "activation, a second fade/detach, and cleanup are "
+            .. "unreachable.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -9702,6 +9706,26 @@ end
 function SETTINGS._updatePresenceAndRoute()
     local selected = SETTINGS._selectActiveThemeEvidence()
     if SETTINGS.DIAGNOSTIC_PLAY_ONCE then
+        if SETTINGS.DIAGNOSTIC_FADE_DETACH_ONCE
+            and SETTINGS._diagnosticPlayCompleteTick ~= nil
+            and not SETTINGS._diagnosticFadeQueued
+            and not SETTINGS._diagnosticFadeCompleted
+            and currentTheme ~= nil
+            and pendingTheme == nil
+            and not activeSwitchQueued
+            and tick - SETTINGS._diagnosticPlayCompleteTick
+                >= SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS
+        then
+            -- Set the guard before publishing command 4. If publication
+            -- fails, _queueThemeFade disables the module; if it succeeds,
+            -- this prevents any later frame from issuing a second fade.
+            SETTINGS._diagnosticFadeQueued = true
+            SETTINGS._queueThemeFade(
+                currentTheme,
+                "v4.4.15 one-time diagnostic fade/detach"
+            )
+            return
+        end
         if selected == nil then
             if activeEnemy ~= nil then
                 addTimeline(string.format(
@@ -9718,7 +9742,7 @@ function SETTINGS._updatePresenceAndRoute()
         if activeEnemy ~= selected.profile.name then
             addTimeline(string.format(
                 "SCAN MATCH CONFIRMED tick=%u seconds=%.3f enemy=%s "
-                    .. "match=%s; play-once test selected",
+                    .. "match=%s; play/fade-detach-once test selected",
                 tick,
                 tick / 60,
                 selected.profile.name,
@@ -10225,6 +10249,7 @@ function SETTINGS._processDispatchCounter()
         end
         currentTheme = completed
         playbackActive = completed ~= nil
+        SETTINGS._diagnosticPlayCompleteTick = tick
         stopRequested = false
         pendingTheme = nil
         pendingMode = nil
@@ -10233,7 +10258,8 @@ function SETTINGS._processDispatchCounter()
             "READY: DIAGNOSTIC PRIVATE SCD PLAY COMPLETE "
                 .. "tick=%u seconds=%.3f enemy=%s resource_class=%u "
                 .. "bytes=%u buffer=0x%X resource=0x%08X; "
-                .. "one play issued; stop/replay/fade/detach blocked",
+                .. "one play issued; one fade/detach will run after %u ticks; "
+                .. "replay and later lifecycle commands blocked",
             tick,
             tick / 60,
             completed ~= nil and completed.name or "none",
@@ -10241,7 +10267,8 @@ function SETTINGS._processDispatchCounter()
                 and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
             completed ~= nil and completed.size or 0,
             lastLoadBuffer,
-            lastTargetResource
+            lastTargetResource,
+            SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS
         ), true)
         return
     end
@@ -10274,21 +10301,40 @@ function SETTINGS._processDispatchCounter()
         pendingTheme = nil
         pendingMode = nil
         activeSwitchQueued = false
-        addTimeline(string.format(
-            "PRIVATE THEME FADED AND DETACHED tick=%u seconds=%.3f "
-                .. "enemy=%s slot=%u fade_ms=%u count=%u total=%u "
-                .. "cache_retained=%s node=0x%X",
-            tick,
-            tick / 60,
-            completed ~= nil and completed.name or "none",
-            completed ~= nil
-                and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
-            SETTINGS.FADE_OUT_MS,
-            delta,
-            totalPrivateStops,
-            tostring(cacheRetained),
-            cacheRetained and SETTINGS._lastTargetNode or 0
-        ), true)
+        if SETTINGS.DIAGNOSTIC_FADE_DETACH_ONCE then
+            SETTINGS._diagnosticFadeCompleted = true
+            addTimeline(string.format(
+                "READY: DIAGNOSTIC PRIVATE SCD FADE/DETACH COMPLETE "
+                    .. "tick=%u seconds=%.3f enemy=%s slot=%u "
+                    .. "fade_ms=%u count=%u cache_retained=%s node=0x%X; "
+                    .. "replay and all further lifecycle commands blocked",
+                tick,
+                tick / 60,
+                completed ~= nil and completed.name or "none",
+                completed ~= nil
+                    and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
+                SETTINGS.FADE_OUT_MS,
+                delta,
+                tostring(cacheRetained),
+                cacheRetained and SETTINGS._lastTargetNode or 0
+            ), true)
+        else
+            addTimeline(string.format(
+                "PRIVATE THEME FADED AND DETACHED tick=%u seconds=%.3f "
+                    .. "enemy=%s slot=%u fade_ms=%u count=%u total=%u "
+                    .. "cache_retained=%s node=0x%X",
+                tick,
+                tick / 60,
+                completed ~= nil and completed.name or "none",
+                completed ~= nil
+                    and completed.bgmId or SETTINGS.DEFAULT_BGM_ID,
+                SETTINGS.FADE_OUT_MS,
+                delta,
+                totalPrivateStops,
+                tostring(cacheRetained),
+                cacheRetained and SETTINGS._lastTargetNode or 0
+            ), true)
+        end
         return
     end
 
@@ -10498,6 +10544,9 @@ function SETTINGS._resetPrivateThemeState()
     SETTINGS._copyOffset = 0
     SETTINGS._diagnosticPlayCount = 0
     SETTINGS._diagnosticRetainedBytes = 0
+    SETTINGS._diagnosticPlayCompleteTick = nil
+    SETTINGS._diagnosticFadeQueued = false
+    SETTINGS._diagnosticFadeCompleted = false
     SETTINGS._frameStage = "none"
     enabled = false
     tick = 0
@@ -10566,17 +10615,18 @@ function SETTINGS._privateThemeInit()
     )
     addStatus(
         "Playback isolation: the register-stage native stop call is erased, "
-            .. "but its single native play call remains active. Replay, cache "
-            .. "activation, fade, detachment, and freeing are disabled.",
+            .. "but its single native play call remains active. One timed "
+            .. "fade/detach follows after "
+            .. tostring(SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS)
+            .. " ticks; replay, cache activation, additional lifecycle "
+            .. "commands, and freeing are disabled.",
         false
     )
     addStatus(
-        "Test safety: the resource and private playback may remain live until "
-            .. "native game state replaces them or process exit. Native music "
-            .. "may overlap because the preliminary stop is intentionally "
-            .. "disabled. After the completion message, observe briefly "
-            .. "without changing rooms or starting another fight, then fully "
-            .. "exit the game.",
+        "Test safety: native music may overlap because the preliminary stop "
+            .. "is intentionally disabled. Observe playback until the "
+            .. "automatic fade/detach completion message, then remain in the "
+            .. "same encounter briefly before fully exiting the game.",
         false
     )
     addStatus(
@@ -10649,6 +10699,21 @@ function SETTINGS._privateThemeInit()
     ) then
         addStatus(
             "DISABLED: Steam Global executable signature mismatch.",
+            true
+        )
+        saveReport()
+        return
+    end
+    if type(SETTINGS.DIAGNOSTIC_FADE_DETACH_ONCE) ~= "boolean"
+        or type(SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS) ~= "number"
+        or SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS < 60
+        or SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS > 3600
+        or SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS
+            ~= math.floor(SETTINGS.DIAGNOSTIC_FADE_DELAY_TICKS)
+    then
+        addStatus(
+            "DISABLED: diagnostic fade delay must be an integer "
+                .. "from 60 through 3600 ticks.",
             true
         )
         saveReport()
@@ -10793,10 +10858,11 @@ function SETTINGS._privateThemeInit()
         true
     )
     addStatus(
-        "READY: play-once A/B active. Lock onto one configured enemy and wait "
-            .. "for DIAGNOSTIC PRIVATE SCD PLAY COMPLETE. Exactly one play "
-            .. "call will be issued without the preliminary native stop. "
-            .. "Use a full game restart instead of F1.",
+        "READY: play/fade-detach-once A/B active. Lock onto one configured "
+            .. "enemy and wait for both DIAGNOSTIC PRIVATE SCD PLAY COMPLETE "
+            .. "and DIAGNOSTIC PRIVATE SCD FADE/DETACH COMPLETE. The second "
+            .. "event follows five seconds after the first. Use a full game "
+            .. "restart instead of F1.",
         true
     )
     saveReport()
@@ -10898,9 +10964,11 @@ function _OnInit()
     -- subsystem's verified cave.
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.14PlayOnceAB] READY: exact target scanning plus "
-            .. "one real private-SCD allocation/copy/registration/play are "
-            .. "active; stop/replay/fade/detach, enemy HP, "
+        "[EnemyConfigV4.4.15PlayFadeDetachOnceAB] READY: exact target "
+            .. "scanning plus one real private-SCD "
+            .. "allocation/copy/registration/play and one timed fade/detach "
+            .. "are active; replay and additional lifecycle commands, "
+            .. "enemy HP, "
             .. "damage-taken, animation-speed, movement-speed, and broad "
             .. "stats discovery are disabled."
     )
