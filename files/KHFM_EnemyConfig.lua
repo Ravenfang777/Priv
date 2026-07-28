@@ -1,10 +1,12 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_20_StatsNoSpeedAB.lua
+-- File: KHFM_EnemyConfig_v4_4_21_HPDiscoveryNoDamageHookAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.20 STATS WITHOUT SPEED A/B.
+-- v4.4.21 HP/DISCOVERY WITHOUT DAMAGE HOOK A/B.
 --
 -- Diagnostic boundary:
---   * Enemy HP, damage-taken, graph discovery, and candidate refresh are active.
+--   * Enemy HP, graph discovery, and candidate refresh are active.
+--   * The native damage hook, damage-table publication, and captured-hit
+--     processing are bypassed.
 --   * Animation-speed and movement-speed processing are bypassed at runtime.
 --   * The private-theme module is not constructed or initialized.
 --   * No private-audio hook, SCD file access, allocation, copy, registration,
@@ -29,7 +31,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: HP and damage active; enemy speed and private audio disabled"
+LUAGUI_DESC = "A/B test: HP/discovery active; damage hook, speed, and private audio disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -371,9 +373,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_20_Stats_No_Speed_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_21_HP_Discovery_No_Damage_Hook_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_20_Stats_No_Speed_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_21_HP_Discovery_No_Damage_Hook_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1122,9 +1124,9 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- One-variable v4.4.20 A/B gate. All configured speed values remain
-        -- untouched in the user table, but the per-frame animation/movement
-        -- processor is unreachable during this diagnostic.
+        -- V4.4.21 keeps the same HP/discovery workload as v4.4.20 while making
+        -- every native damage-hook install/update/capture path unreachable.
+        DIAGNOSTIC_DISABLE_DAMAGE_HOOK = true,
         DIAGNOSTIC_DISABLE_SPEED = true,
         ENABLE = SHARED.ENABLE,
         GLOBAL = SHARED.STATS_DEFAULTS,
@@ -4070,7 +4072,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.20 stats-without-speed A/B / Stats report",
+        "KHFM Enemy Config v4.4.21 HP/discovery without damage hook A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4156,27 +4158,16 @@ function SETTINGS._combinedStatsInit()
         record("PROFILE WARNING: " .. warning, true)
     end
 
-    local executableOK, executableReason = validateExecutable()
-    if not executableOK then
-        record("DISABLED: " .. executableReason .. ".", true)
-        saveReport()
-        return
-    end
-
-    local hookOK, hookReason = installDamageHook()
-    if not hookOK then
-        record("DISABLED: " .. hookReason .. ".", true)
-        saveReport()
-        return
-    end
-
     pcall(SetHertz, 60)
     restartGraph()
     enabled = true
 
-    record("READY: " .. hookReason .. ".", true)
     record(
-        "HP and damage-taken settings activate from the verified pre-hit Sora+0x74 live target.",
+        "READY: native damage hook is intentionally not installed; HP/discovery control is active.",
+        true
+    )
+    record(
+        "HP settings activate from the verified pre-hit Sora+0x74 live target.",
         true
     )
     record(
@@ -4184,7 +4175,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "Native final-HP capture remains enabled for post-hit target corroboration.",
+        "V4.4.21 A/B: damage-taken/dealt scaling and native final-HP capture are fully bypassed.",
         true
     )
     record(
@@ -4196,7 +4187,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.20 A/B: animation-speed and X/Z movement-speed processing are "
+        "V4.4.21 A/B: animation-speed and X/Z movement-speed processing are "
             .. "fully bypassed. Configured speed values remain preserved but "
             .. "cannot read or write enemy motion in this build.",
         true
@@ -4219,16 +4210,6 @@ function SETTINGS._combinedStatsFrame()
 
     tick = tick + 1
 
-    if tick % 120 == 0 and not ownHookStillInstalled() then
-        enabled = false
-        record(
-            "DISABLED: another script replaced the enemy-stat damage hook after initialization.",
-            true
-        )
-        saveReport()
-        return
-    end
-
     local sora = safeReadLong(SORA_POINTER) or 0
     if sora ~= currentSora then
         resetDiscovery(sora)
@@ -4238,21 +4219,8 @@ function SETTINGS._combinedStatsFrame()
     processGraph()
     processPreHitLiveTarget()
 
-    -- Publish the verified pre-hit target before consuming this frame's native
-    -- capture so the report can compare the configured and live hook values.
-    local hookOK, hookReason = updateDamageHookState()
-    if not hookOK then
-        enabled = false
-        record("DISABLED: " .. hookReason .. ".", true)
-        safeWriteFloat(HOOK_DEFAULT_TAKEN_RVA, 1.0, false)
-        safeWriteFloat(HOOK_DEFAULT_DEALT_RVA, 1.0, false)
-        saveReport()
-        return
-    end
-
-    processCapturedDamageTarget()
-    -- Refresh after captured-damage telemetry so candidate.hp still represents
-    -- the previous observed frame when observed_HP_loss is calculated.
+    -- The damage hook, target-table publication, and captured-hit telemetry are
+    -- intentionally unreachable in this A/B build.
     refreshCandidates()
     if not SETTINGS.DIAGNOSTIC_DISABLE_SPEED then
         updateSafeAnimationSpeeds()
@@ -10976,17 +10944,17 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.20 A/B boundary: construct and run only the stats module,
-    -- with its animation/movement-speed processor bypassed.
+    -- Strict v4.4.21 A/B boundary: construct and run only the stats module,
+    -- with damage-hook and animation/movement-speed paths bypassed.
     -- buildPrivateThemeModule() remains in the source for byte-comparison
     -- against v4.4.18, but it is never called. Therefore no private-audio
     -- native hook or resource lifecycle can initialize.
     statsModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.20StatsNoSpeedAB] READY: enemy HP and "
-            .. "damage-taken are enabled. Animation speed, movement speed, "
-            .. "and the entire private-theme subsystem are inactive; native "
-            .. "enemy motion and music remain unchanged."
+        "[EnemyConfigV4.4.21HPDiscoveryNoDamageHookAB] READY: enemy HP "
+            .. "and discovery are enabled. Damage scaling, the native damage "
+            .. "hook, animation speed, movement speed, and private themes are "
+            .. "inactive."
     )
 end
 
