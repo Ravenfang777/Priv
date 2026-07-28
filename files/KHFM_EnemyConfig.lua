@@ -1,6 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig.lua
--- Single-file enemy HP, speed, and multi-private-theme controller v4.4.7.
+-- File: KHFM_EnemyConfig_v4_4_11_IdleAudioHookAB.lua
+-- Single-file enemy HP, speed, and multi-private-theme controller
+-- v4.4.11 IDLE-AUDIO-HOOK A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -21,7 +22,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Per-enemy HP, speed, and private battle themes without native music replacement"
+LUAGUI_DESC = "A/B test: idle native audio hook active; private SCD lifecycle disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -39,7 +40,7 @@ LUAGUI_DESC = "Per-enemy HP, speed, and private battle themes without native mus
 
 local ENEMY_SETTINGS = {
     ["Shadow"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.5, BATTLE_THEME = nil },
     ["Soldier"] = { 
         MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = nil },
     ["Powerwild"] = { 
@@ -129,21 +130,21 @@ local ENEMY_SETTINGS = {
     ["Battleship"] = { 
         MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku - Wooden Sword"] = {
-        MAX_HP = 280,
+        MAX_HP = 300,
         ANIMATION_SPEED = {},
-        OVERALL_SPEED = 1.4,
+        OVERALL_SPEED = 1.3,
         BATTLE_THEME = "KHFM_RowdyRumbleTheme.win32.scd", 
     },
     ["Tidus"] = {
-        MAX_HP = 220,
+        MAX_HP = 200,
         ANIMATION_SPEED = {},
-        OVERALL_SPEED = 1.5,
+        OVERALL_SPEED = 1.4,
         BATTLE_THEME = "KHFM_TidusTheme.win32.scd",
     },
     ["Selphie"] = { 
-        MAX_HP = 180, 
+        MAX_HP = 150, 
         ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 1.60, [0x02] = 1.60, [0xED] = 1.60, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 2.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 1.50, [0xF6] = 2.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, 
-        OVERALL_SPEED = nil,
+        OVERALL_SPEED = 1.4,
         BATTLE_THEME = "KHFM_SelphieTheme.win32.scd", 
     },
     ["Wakka"] = {
@@ -153,15 +154,15 @@ local ENEMY_SETTINGS = {
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
     ["Darkside"] = { 
-        MAX_HP = 600,
+        MAX_HP = 900,
         ANIMATION_SPEED = { [0xDA] = 1.00 },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
     },
     ["Leon"] = {
         MAX_HP = 999,
-        ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0xCA] = 1.40, [0xCB] = 1.40, [0xCC] = 1.40, [0xD7] = 2.00, [0xD8] = 2.00, },
-        OVERALL_SPEED = nil,
+        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
+        OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
     ["Guard Armor"] = { 
@@ -175,7 +176,7 @@ local ENEMY_SETTINGS = {
     ["Queen's Heart Cards"] = { 
         MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Cloud"] = { 
-        MAX_HP = 999,
+        MAX_HP = 1500,
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_CloudTheme.win32.scd", 
@@ -187,13 +188,13 @@ local ENEMY_SETTINGS = {
     ["Hades"] = { 
         MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Rock Titan"] = { 
-        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ice Titan"] = { 
-        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
-        MAX_HP = 999, 
+        MAX_HP = 7777, 
         ANIMATION_SPEED = {}, 
-        OVERALL_SPEED = 2, 
+        OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
     },
     ["Sabor"] = { 
@@ -277,6 +278,10 @@ local ENEMY_SETTINGS = {
 
 local INTERNAL_CONFIG = {
     ENABLE = true,
+    -- false keeps routine target, movement, damage, and theme telemetry out
+    -- of F2 and the text timelines. Startup, warnings, and failures remain.
+    -- Set true when a detailed diagnostic capture is specifically needed.
+    DEBUG_MODE = false,
 
     STATS_DEFAULTS = {
         MAX_HP = nil,
@@ -356,12 +361,12 @@ local INTERNAL_CONFIG = {
     LOG_IDENTIFIED_ENEMIES = true,
     LOG_UNRESOLVED_MODELS = true,
     ECHO_ALL_BGM_TO_F2 = true,
-    REPORT_SAVE_INTERVAL_TICKS = 60,
+    REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KH1FM_All_Enemy_Stats_Speed_Themes_v2_2_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_11_Idle_Audio_Hook_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KH1FM_All_Enemy_Stats_Speed_Themes_v2_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_11_Idle_Audio_Hook_AB_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -756,14 +761,7 @@ local INTERNAL_CONFIG = {
         ["Sephiroth"] = {
             model_codes = { "xa_ex_3000", "xa_ex_3008", "xa_ex_3009" },
             fingerprints = {},
-            context_bindings = {
-                {
-                    world = 11, room = 6, native_max_hp = 1800,
-                    max_hp_values = { 1800 },
-                    fingerprint =
-                        "000DCB78:00000140:00050000:000764D0:013E:001D",
-                },
-},
+            context_bindings = {},
         },
 
         -- ================================================================
@@ -1337,6 +1335,7 @@ local lastPreHitTarget = 0
 
 local reportLines = {}
 local reportDirty = false
+local reportUrgent = false
 local lastReportSaveTick = 0
 
 local modelCodeProfiles = {}
@@ -1379,15 +1378,42 @@ local function appendReport(message)
     reportDirty = true
 end
 
+local function importantReportMessage(message)
+    local text = tostring(message)
+    return tick == 0
+        or string.find(text, "^READY:") ~= nil
+        or string.find(text, "^DISABLED:") ~= nil
+        or string.find(text, "^STOPPED:") ~= nil
+        or string.find(text, "WARNING") ~= nil
+        or string.find(text, "FAILED") ~= nil
+        or string.find(text, "REFUSED") ~= nil
+        or string.find(text, "ERROR") ~= nil
+end
+
 local function record(message, echo)
-    appendReport(message)
-    if echo then
+    local important = importantReportMessage(message)
+    if SETTINGS.DEBUG_MODE or important then
+        appendReport(message)
+    end
+    if important then
+        reportUrgent = true
+    end
+    if echo and (SETTINGS.DEBUG_MODE or important) then
         log(message)
     end
 end
 
 local function saveReport()
     if not reportDirty then
+        return true
+    end
+    local interval = math.max(
+        1,
+        math.floor(tonumber(SETTINGS.REPORT_SAVE_INTERVAL_TICKS) or 600)
+    )
+    if not reportUrgent
+        and tick > 0
+        and tick - lastReportSaveTick < interval then
         return true
     end
     if io == nil or io.open == nil or SCRIPT_PATH == nil then
@@ -1404,6 +1430,7 @@ local function saveReport()
     file:write("\n")
     file:close()
     reportDirty = false
+    reportUrgent = false
     lastReportSaveTick = tick
     return true
 end
@@ -4015,6 +4042,7 @@ function SETTINGS._combinedStatsInit()
     lastPreHitTarget = 0
     reportLines = {}
     reportDirty = false
+    reportUrgent = false
     lastReportSaveTick = 0
     healthBaselines = {}
     identifiedLogged = {}
@@ -4023,7 +4051,10 @@ function SETTINGS._combinedStatsInit()
     lastOverflowCount = -1
     damageRouteLogKey = nil
 
-    record("KH1FM All Enemy Stats + Speed + Themes v2.2 / Stats report", false)
+    record(
+        "KHFM Enemy Config v4.4.11 Idle-audio-hook A/B / Stats report",
+        false
+    )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
     record(string.format(
         "Global settings: max_hp=%s HP_multiplier=%.3f "
@@ -4070,6 +4101,15 @@ function SETTINGS._combinedStatsInit()
         #SETTINGS.EXPERIMENTAL_ANIMATION_SPEED
             .POSITION_VECTOR_OFFSETS
     ), false)
+    record(
+        "Diagnostics: quiet mode="
+            .. tostring(not SETTINGS.DEBUG_MODE)
+            .. "; routine telemetry is retained only when DEBUG_MODE=true; "
+            .. "report saves are batched every "
+            .. tostring(SETTINGS.REPORT_SAVE_INTERVAL_TICKS)
+            .. " ticks.",
+        false
+    )
 
     if not SETTINGS.ENABLE then
         record("DISABLED: SETTINGS.ENABLE is false.", true)
@@ -4202,7 +4242,9 @@ function SETTINGS._combinedStatsFrame()
     refreshCandidates()
     updateSafeAnimationSpeeds()
 
-    if reportDirty and tick - lastReportSaveTick >= 300 then
+    if reportDirty
+        and tick - lastReportSaveTick
+            >= SETTINGS.REPORT_SAVE_INTERVAL_TICKS then
         saveReport()
     end
 end
@@ -7189,6 +7231,12 @@ end
 local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
+    DEBUG_MODE = SHARED.DEBUG_MODE,
+    -- Diagnostic v4.4.11 split: install and run the exact native frame-hook
+    -- allocation-stage image, but never publish a dispatch command. Target
+    -- scanning remains active while SCD file reads, buffer allocation,
+    -- resource registration, playback, fade, and detachment stay disabled.
+    DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY = true,
     COPY_CHUNK_SIZE = 0x10000,
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
@@ -7207,9 +7255,9 @@ local SETTINGS = {
     VALID_THEME_COUNT = 0,
     INITIAL_THEME = nil,
 
-    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_7_Theme_Report.txt",
+    REPORT_FILENAME = "KHFM_EnemyConfig_v4_4_11_Idle_Audio_Hook_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
-    REPORT_SAVE_INTERVAL_TICKS = 60,
+    REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
 }
 
@@ -7721,6 +7769,7 @@ local primaryVolumeBits = 0x3F400000
 local primaryFadeBits = 0x3F400000
 local primaryTime = 0
 local reportDirty = false
+SETTINGS._reportUrgent = false
 local lastReportSaveTick = 0
 
 -- =========================================================================
@@ -7728,38 +7777,62 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.7:MultiTheme] " .. message)
+    ConsolePrint("[EnemyConfigV4.4.11IdleAudioHookAB] " .. message)
+end
+
+function SETTINGS._importantReportMessage(message)
+    local text = tostring(message)
+    return tick == 0
+        or string.find(text, "^READY:") ~= nil
+        or string.find(text, "^DISABLED:") ~= nil
+        or string.find(text, "^STOPPED:") ~= nil
+        or string.find(text, "WARNING") ~= nil
+        or string.find(text, "FAILED") ~= nil
+        or string.find(text, "REFUSED") ~= nil
+        or string.find(text, "ERROR") ~= nil
 end
 
 local function addStatus(message, echo)
-    statusLines[#statusLines + 1] = message
-    reportDirty = true
-    if echo then
+    local important = SETTINGS._importantReportMessage(message)
+    if SETTINGS.DEBUG_MODE or important then
+        statusLines[#statusLines + 1] = message
+        reportDirty = true
+    end
+    if important then
+        SETTINGS._reportUrgent = true
+    end
+    if echo and (SETTINGS.DEBUG_MODE or important) then
         console(message)
     end
 end
 
 local function addTimeline(message, echo)
-    if #timelineRows < SETTINGS.MAX_TIMELINE_ROWS then
-        timelineRows[#timelineRows + 1] = message
-    elseif not timelineCapped then
-        timelineCapped = true
-        console("TIMELINE LIMIT REACHED: counters continue.")
+    local important = SETTINGS._importantReportMessage(message)
+    if SETTINGS.DEBUG_MODE or important then
+        if #timelineRows < SETTINGS.MAX_TIMELINE_ROWS then
+            timelineRows[#timelineRows + 1] = message
+        elseif not timelineCapped then
+            timelineCapped = true
+            console("TIMELINE LIMIT REACHED: counters continue.")
+        end
+    end
+    if important then
+        SETTINGS._reportUrgent = true
     end
     reportDirty = true
-    if echo then
+    if echo and (SETTINGS.DEBUG_MODE or important) then
         console(message)
     end
 end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.7 / Multi Private Theme report",
+        "KH1FM Enemy Config v4.4.11 / Idle-audio-hook A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
-        "Playback: private SCDs are copied into native aligned buffers, "
-            .. "registered under private music900-music995 identities, "
-            .. "played on each enemy row's native BGM slot, then faded and detached "
-            .. "after the configured enemy leaves the encounter.",
+        "Playback: intentionally disabled for this diagnostic. The exact "
+            .. "native frame-hook allocation-stage image is installed and "
+            .. "runs with command=0, but no SCD file is opened, copied, "
+            .. "allocated, registered, played, faded, or detached.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -7872,6 +7945,15 @@ local function saveReport()
     if not reportDirty then
         return
     end
+    local interval = math.max(
+        1,
+        math.floor(tonumber(SETTINGS.REPORT_SAVE_INTERVAL_TICKS) or 600)
+    )
+    if not SETTINGS._reportUrgent
+        and tick > 0
+        and tick - lastReportSaveTick < interval then
+        return
+    end
     if io == nil or io.open == nil or SCRIPT_PATH == nil then
         return
     end
@@ -7886,6 +7968,7 @@ local function saveReport()
     file:write("\n")
     file:close()
     reportDirty = false
+    SETTINGS._reportUrgent = false
     lastReportSaveTick = tick
 end
 
@@ -9597,6 +9680,34 @@ end
 
 function SETTINGS._updatePresenceAndRoute()
     local selected = SETTINGS._selectActiveThemeEvidence()
+    if SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
+        if selected == nil then
+            if activeEnemy ~= nil then
+                addTimeline(string.format(
+                    "SCAN MATCH LOST tick=%u seconds=%.3f enemy=%s",
+                    tick,
+                    tick / 60,
+                    activeEnemy
+                ), true)
+            end
+            activeEnemy = nil
+            activeTheme = nil
+            return
+        end
+        if activeEnemy ~= selected.profile.name then
+            addTimeline(string.format(
+                "SCAN MATCH CONFIRMED tick=%u seconds=%.3f enemy=%s "
+                    .. "match=%s; idle audio hook command remains zero",
+                tick,
+                tick / 60,
+                selected.profile.name,
+                selected.source
+            ), true)
+        end
+        activeEnemy = selected.profile.name
+        activeTheme = selected.profile
+        return
+    end
     if selected == nil then
         local preserveForUnthemedTarget =
             not SETTINGS._sceneChangedThisTick
@@ -10110,7 +10221,9 @@ end
 -- =========================================================================
 
 function SETTINGS._prepareThemeCatalog()
-    if SCRIPT_PATH == nil or io == nil or io.open == nil then
+    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
+        and (SCRIPT_PATH == nil or io == nil or io.open == nil)
+    then
         return false, "Lua script path or file access is unavailable"
     end
 
@@ -10128,8 +10241,11 @@ function SETTINGS._prepareThemeCatalog()
         names[#names + 1] = name
     end
     table.sort(names)
-    local separator = string.find(SCRIPT_PATH, "\\", 1, true)
-        and "\\" or "/"
+    local separator = "/"
+    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
+        separator = string.find(SCRIPT_PATH, "\\", 1, true)
+            and "\\" or "/"
+    end
 
     for index, name in ipairs(names) do
         local filename = ENEMY_CONFIG[name].BATTLE_THEME
@@ -10151,8 +10267,14 @@ function SETTINGS._prepareThemeCatalog()
                     true
                 )
             else
-                local fullPath = SCRIPT_PATH .. separator .. filename
-                local file = io.open(fullPath, "rb")
+                local fullPath =
+                    SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
+                    and ""
+                    or (SCRIPT_PATH .. separator .. filename)
+                local file =
+                    SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
+                    and true
+                    or io.open(fullPath, "rb")
                 if file == nil then
                     addStatus(
                         "THEME DISABLED: " .. name
@@ -10160,9 +10282,17 @@ function SETTINGS._prepareThemeCatalog()
                         true
                     )
                 else
-                    local magic = file:read(8)
-                    local size = file:seek("end")
-                    file:close()
+                    local magic =
+                        SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
+                        and "SEDBSSCF"
+                        or file:read(8)
+                    local size =
+                        SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY
+                        and 0x100
+                        or file:seek("end")
+                    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
+                        file:close()
+                    end
                     if magic ~= "SEDBSSCF"
                         or type(size) ~= "number"
                         or size < 0x100
@@ -10328,20 +10458,22 @@ function SETTINGS._resetPrivateThemeState()
     primaryFadeBits = 0x3F400000
     primaryTime = 0
     reportDirty = true
+    SETTINGS._reportUrgent = false
     lastReportSaveTick = 0
 end
 
 function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
-        "Route: every configured enemy selects its own private SCD on "
-            .. "that enemy row's native BGM slot; the slot fades out and its "
-            .. "private resource is detached after that enemy leaves.",
+        "A/B route: the exact native frame-hook allocation-stage image is "
+            .. "installed, but its dispatch command remains zero for the "
+            .. "entire test.",
         false
     )
     addStatus(
-        "Native music safety: private runtime identities use music900-"
-            .. "music995 and no native asset path is replaced.",
+        "Resource isolation: no private SCD is opened, copied, allocated, "
+            .. "registered, played, faded, or detached; native music remains "
+            .. "untouched.",
         false
     )
     addStatus(
@@ -10353,6 +10485,15 @@ function SETTINGS._privateThemeInit()
         "Target gate: themes accept only the verified live Sora+0x74 "
             .. "target. Unique fingerprints identify the same enemy across "
             .. "rooms; model-graph sightings cannot start music.",
+        false
+    )
+    addStatus(
+        "Diagnostics: quiet mode="
+            .. tostring(not SETTINGS.DEBUG_MODE)
+            .. "; routine theme events stay out of F2 and the timeline "
+            .. "unless DEBUG_MODE=true; summary reports are batched every "
+            .. tostring(SETTINGS.REPORT_SAVE_INTERVAL_TICKS)
+            .. " ticks.",
         false
     )
     if not SETTINGS.ENABLE then
@@ -10545,16 +10686,14 @@ function SETTINGS._privateThemeInit()
     addStatus("READY: " .. hookReason .. ".", true)
     addStatus(
         "READY: " .. tostring(SETTINGS.VALID_THEME_COUNT)
-            .. " private theme row(s) validated; original native music "
-            .. "assets remain untouched.",
+            .. " private theme row(s) compiled for identity matching "
+            .. "without opening their SCD files.",
         true
     )
     addStatus(
-        "Fight a configured enemy. F2 should show ENEMY PRESENT, "
-            .. "ROUTE ARMED, NATIVE BUFFER READY, "
-            .. "PRIVATE SCD COPY VERIFIED, then ACTIVE SWITCH EXECUTED "
-            .. "on the row's selected slot. After defeat it should show PRIVATE THEME "
-            .. "FADED AND DETACHED. Use a full game restart instead of F1.",
+        "READY: idle audio hook A/B active. Native music should remain "
+            .. "unchanged. Test the same gameplay route and note whether "
+            .. "stutter returns. Use a full game restart instead of F1.",
         true
     )
     saveReport()
@@ -10582,7 +10721,9 @@ function SETTINGS._privateThemeFrame()
         addStatus("READY: " .. frameReason .. ".", true)
     end
 
-    if tick % 120 == 0 and not ownHooksStillInstalled() then
+    if tick % 120 == 0
+        and not ownHooksStillInstalled()
+    then
         enabled = false
         addStatus(
             "DISABLED: another script replaced the multi-theme frame dispatch.",
@@ -10620,8 +10761,10 @@ function SETTINGS._privateThemeFrame()
     if not enabled then
         return
     end
-    SETTINGS._processDispatchCounter()
-    SETTINGS._processPrivateScdTransfer()
+    if not SETTINGS.DIAGNOSTIC_IDLE_AUDIO_HOOK_ONLY then
+        SETTINGS._processDispatchCounter()
+        SETTINGS._processPrivateScdTransfer()
+    end
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10648,13 +10791,20 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- This preserves the verified two-script initialization order: the enemy
-    -- stat cave is reserved first, then the multi-theme dispatcher.
-    statsModule.init()
+    -- Diagnostic isolation: do not initialize the enemy-stat/damage/speed
+    -- subsystem. A full process restart restores the executable before this
+    -- file loads, while the theme dispatcher continues to reserve the stat
+    -- subsystem's verified cave.
     privateThemeModule.init()
+    ConsolePrint(
+        "[EnemyConfigV4.4.11IdleAudioHookAB] READY: exact private-theme "
+            .. "target scanning and the idle native frame-dispatch hook are "
+            .. "active; every SCD resource/playback command, enemy HP, "
+            .. "damage-taken, animation-speed, movement-speed, and broad "
+            .. "stats discovery are disabled."
+    )
 end
 
 function _OnFrame()
-    statsModule.frame()
     privateThemeModule.frame()
 end
