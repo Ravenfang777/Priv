@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_15_PlayFadeDetachOnceAB.lua
+-- File: KHFM_EnemyConfig_v4_4_16_LeonFingerprintPlayFadeAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.15 PLAY-THEN-FADE/DETACH-ONCE A/B.
+-- v4.4.16 LEON-FINGERPRINT PLAY-THEN-FADE/DETACH-ONCE A/B.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -689,7 +689,14 @@ local INTERNAL_CONFIG = {
             source_bgm = "music131.win32.scd",
             bgm_slot = 1, music_priority = 100,
             model_codes = { "xa_ex_1030", "xa_ex_1031", "xa_ex_1038", "xa_ex_1039" },
-            fingerprints = {},
+            -- Leon's verified fingerprint is unique and must remain valid
+            -- after EnemyConfig changes his visible maximum HP from the
+            -- native 120 to the configured 999. Keeping this only inside the
+            -- context binding made theme selection incorrectly classify a
+            -- correctly identified Leon target as unthemed.
+            fingerprints = {
+                "00092CF8:000000A0:00028000:0005ABF0:00F7:000D",
+            },
             context_bindings = {
                 {
                     world = 3, room = 0, native_max_hp = 120,
@@ -4052,7 +4059,8 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.15 Play/fade-detach-once A/B / Stats report",
+        "KHFM Enemy Config v4.4.16 Leon-fingerprint "
+            .. "play/fade-detach-once A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -7232,7 +7240,8 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.15 split: allocate, copy, register, and play one
+    -- Diagnostic v4.4.16 split: identify Leon directly by his verified
+    -- fingerprint, then allocate, copy, register, and play one
     -- selected private SCD exactly once. Five seconds after the completed
     -- play, issue exactly one native fade/detach command. The wrapper's
     -- preliminary immediate-stop call remains erased, and replay, cache
@@ -7260,7 +7269,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_15_Play_Fade_Detach_Once_AB_Report.txt",
+        "KHFM_EnemyConfig_v4_4_16_Leon_Fingerprint_Play_Fade_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7782,7 +7791,9 @@ local lastReportSaveTick = 0
 -- =========================================================================
 
 local function console(message)
-    ConsolePrint("[EnemyConfigV4.4.15PlayFadeDetachOnceAB] " .. message)
+    ConsolePrint(
+        "[EnemyConfigV4.4.16LeonFingerprintPlayFadeAB] " .. message
+    )
 end
 
 function SETTINGS._importantReportMessage(message)
@@ -7832,7 +7843,8 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.15 / Play/fade-detach-once A/B report",
+        "KH1FM Enemy Config v4.4.16 / Leon-fingerprint "
+            .. "play/fade-detach-once A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first selected private SCD is opened, allocated, "
             .. "copied, registered, and played exactly once. Five seconds "
@@ -9722,7 +9734,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.15 one-time diagnostic fade/detach"
+                "v4.4.16 one-time diagnostic fade/detach"
             )
             return
         end
@@ -10964,8 +10976,8 @@ function _OnInit()
     -- subsystem's verified cave.
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.15PlayFadeDetachOnceAB] READY: exact target "
-            .. "scanning plus one real private-SCD "
+        "[EnemyConfigV4.4.16LeonFingerprintPlayFadeAB] READY: Leon's "
+            .. "verified fingerprint plus one real private-SCD "
             .. "allocation/copy/registration/play and one timed fade/detach "
             .. "are active; replay and additional lifecycle commands, "
             .. "enemy HP, "
