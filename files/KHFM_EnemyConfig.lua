@@ -1,7 +1,13 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_18_StopThenPlayHoldStatsAB.lua
+-- File: KHFM_EnemyConfig_v4_4_19_StatsOnlyAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.18 STOP-THEN-PLAY-AND-HOLD + STATS A/B.
+-- v4.4.19 STATS-ONLY A/B.
+--
+-- Diagnostic boundary:
+--   * Enemy HP, damage-taken, animation-speed, and movement-speed are active.
+--   * The private-theme module is not constructed or initialized.
+--   * No private-audio hook, SCD file access, allocation, copy, registration,
+--     slot stop, playback, fade, detach, cache, or cleanup can run.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -22,7 +28,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: stop slot once, play one private SCD, hold, and run stats"
+LUAGUI_DESC = "A/B test: enemy stats and speed only; private audio disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -364,9 +370,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_18_Stop_Then_Play_Hold_Stats_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_19_Stats_Only_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_18_Stop_Then_Play_Hold_Stats_AB_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_19_Stats_Only_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -10963,31 +10969,24 @@ end
 end
 
 local statsModule = buildStatsModule(INTERNAL_CONFIG)
-local privateThemeModule = buildPrivateThemeModule(
-    ENEMY_SETTINGS,
-    INTERNAL_CONFIG
-)
 
 function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- The stats module was intentionally disabled in v4.4.9-v4.4.17. It is
-    -- restored here so configured HP, damage, and speed values can be
-    -- verified alongside the one-shot audio route.
+    -- Strict v4.4.19 A/B boundary: construct and run only the stats module.
+    -- buildPrivateThemeModule() remains in the source for byte-comparison
+    -- against v4.4.18, but it is never called. Therefore no private-audio
+    -- native hook or resource lifecycle can initialize.
     statsModule.init()
-    privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.18StopThenPlayHoldStatsAB] READY: Leon's "
-            .. "verified fingerprint plus one private-SCD allocation/copy/"
-            .. "registration/slot-stop/play-and-hold route is active. Enemy "
-            .. "HP, damage-taken, animation-speed, and movement-speed are "
-            .. "enabled; automatic fade/detach, replay, and additional "
-            .. "audio lifecycle commands are disabled."
+        "[EnemyConfigV4.4.19StatsOnlyAB] READY: enemy HP, damage-taken, "
+            .. "animation-speed, and movement-speed are enabled. The entire "
+            .. "private-theme subsystem is inactive; native music remains "
+            .. "unchanged."
     )
 end
 
 function _OnFrame()
     statsModule.frame()
-    privateThemeModule.frame()
 end
