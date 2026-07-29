@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_28_FightLatchedStatsNativeEnd.lua
+-- File: KHFM_EnemyConfig_v4_4_29_DamageFloorCeiling.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.28 FIGHT-LATCHED NARROW STATS + PRIVATE THEMES.
+-- v4.4.29 FIGHT-LATCHED DAMAGE FLOOR/CEILING + PRIVATE THEMES.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -16,6 +16,9 @@
 --     native fight-music end.
 --   * The native damage hook publishes only the bounded fight roster, with the
 --     current Sora+0x74 target prioritized. No discovery candidate is swept.
+--   * Per-enemy damage is resolved inside that same native hook in this order:
+--     native damage, DAMAGE_TAKEN multiplier, DAMAGE_FLOOR/DAMAGE_CEILING
+--     clamp, then KH1's native HP subtraction.
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
 --   * Private-theme identification also reads only that same Sora+0x74 target;
 --     its graph traversal, global lock-on probes, and candidate sweep are
@@ -48,13 +51,18 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Fight-latched narrow HP/damage/speed and private themes"
+LUAGUI_DESC = "Fight-latched HP/damage bounds/speed and private themes"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
 --
 -- MAX_HP          Exact HP amount.
 -- DAMAGE_TAKEN    Incoming damage multiplier. 1.00 is native damage.
+-- DAMAGE_FLOOR    Minimum damage from each hit after DAMAGE_TAKEN.
+--                 nil or 0 means no minimum.
+-- DAMAGE_CEILING  Maximum damage from each hit after DAMAGE_TAKEN.
+--                 nil means no maximum.
+--                 FLOOR cannot be greater than CEILING.
 -- ANIMATION_SPEED Per-animation animation + world-movement multipliers:
 --                 { [animation ID] = speed }
 -- OVERALL_SPEED   Animation + world-movement speed for all other animations.
@@ -67,121 +75,133 @@ LUAGUI_DESC = "Fight-latched narrow HP/damage/speed and private themes"
 
 local ENEMY_SETTINGS = {
     ["Shadow"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.5, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.5, BATTLE_THEME = nil },
     ["Soldier"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.2, BATTLE_THEME = nil },
     ["Powerwild"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
     ["Bouncywild"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 1.3, BATTLE_THEME = nil },
     ["Large Body"] = { 
-        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 80, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Fat Bandit"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sea Neon"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sheltering Zone"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Aquatank"] = { 
-        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 80, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Screwdiver"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Bandit"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Pirate"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Red Nocturne"] = {
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Blue Rhapsody"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Yellow Opera"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Green Requiem"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Wizard"] = { 
-        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 80, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Air Soldier"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Pot Spider"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
     ["Barrel Spider"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
     ["Pot Scorpion"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = 2, BATTLE_THEME = nil },
     ["Wight Knight"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Air Pirate"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Gargoyle"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Search Ghost"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Darkball"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Invisible"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Behemoth"] = { 
-        MAX_HP = 3000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 3000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Wyvern"] = { 
-        MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Angel Star"] = { 
-        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 80, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Defender"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["White Mushroom"] = { 
-        MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = nil, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Black Fungus"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Rare Truffle"] = { 
-        MAX_HP = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 9999, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Pink Agaricus"] = {
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Neoshadow"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Stealth Soldier"] = { 
-        MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Gigas Shadow"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sniperwild"] = {
-        MAX_HP = 200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Black Ballade"] = {
-        MAX_HP = 80, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 80, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Grand Ghost"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Jet Balloon"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Missile Diver"] = { 
-        MAX_HP = 100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Chimera"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Battleship"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku - Wooden Sword"] = {
         MAX_HP = 300,
+        DAMAGE_TAKEN = 1.00,
+        DAMAGE_FLOOR = nil,
+        DAMAGE_CEILING = nil,
         ANIMATION_SPEED = {},
         OVERALL_SPEED = 1.3,
         BATTLE_THEME = "KHFM_RowdyRumbleTheme.win32.scd", 
     },
     ["Tidus"] = {
         MAX_HP = 200,
+        DAMAGE_TAKEN = 1.00,
+        DAMAGE_FLOOR = nil,
+        DAMAGE_CEILING = nil,
         ANIMATION_SPEED = {},
         OVERALL_SPEED = 1.4,
         BATTLE_THEME = "KHFM_TidusTheme.win32.scd",
     },
     ["Selphie"] = { 
-        MAX_HP = 150, 
+        MAX_HP = 150, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, 
         ANIMATION_SPEED = { [0x00] = 2.00, [0x01] = 1.60, [0x02] = 1.60, [0xED] = 1.60, [0xEE] = 2.00, [0xEF] = 2.00, [0xF0] = 2.00, [0xF1] = 1.00, [0xF2] = 1.50, [0xF4] = 1.50, [0xF5] = 1.50, [0xF6] = 2.00, [0xF7] = 1.00, [0xFB] = 1.00, [0xFD] = 1.00, }, 
         OVERALL_SPEED = 1.4,
         BATTLE_THEME = "KHFM_SelphieTheme.win32.scd", 
     },
     ["Wakka"] = {
         MAX_HP = 200,
+        DAMAGE_TAKEN = 1.00,
+        DAMAGE_FLOOR = nil,
+        DAMAGE_CEILING = nil,
         ANIMATION_SPEED = { [0x00] = 3.00, [0x01] = 3.00, [0x02] = 2.00, [0x06] = 4.00, [0x07] = 4.00, [0xEA] = 1.00, [0xEB] = 1.00, [0xE6] = 4.00, [0xE7] = 1.00, [0xE9] = 4.00, [0xF5] = 5.00, [0xF6] = 5.00, [0xF7] = 1.50 },
         OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_WakkaTheme.win32.scd",
     },
     ["Darkside"] = { 
         MAX_HP = 900,
+        DAMAGE_TAKEN = 1.00,
+        DAMAGE_FLOOR = nil,
+        DAMAGE_CEILING = nil,
         ANIMATION_SPEED = { [0xDA] = 1.00 },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
@@ -189,112 +209,120 @@ local ENEMY_SETTINGS = {
     ["Leon"] = {
         MAX_HP = 999,
         DAMAGE_TAKEN = 2.00,
+        DAMAGE_FLOOR = nil,
+        DAMAGE_CEILING = nil,
         ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
     ["Guard Armor"] = { 
-        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 900, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Opposite Armor"] = { 
-        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Trickmaster"] = { 
-        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 900, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Queen's Spade Cards"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Queen's Heart Cards"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Cloud"] = { 
         MAX_HP = 1500,
+        DAMAGE_TAKEN = 1.00,
+        DAMAGE_FLOOR = nil,
+        DAMAGE_CEILING = nil,
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_CloudTheme.win32.scd", 
     },
     ["Hercules"] = { 
-        MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = nil, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Cerberus"] = { 
-        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Hades"] = { 
-        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1500, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Rock Titan"] = { 
-        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ice Titan"] = { 
-        MAX_HP = 4000, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
-        MAX_HP = 7777, 
+        MAX_HP = 7777, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, 
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
     },
     ["Sabor"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Clayton"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Stealth Sneak"] = { 
-        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 900, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Jafar"] = { 
-        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 600, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Genie Jafar"] = { 
-        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Pot Centipede"] = { 
-        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 600, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Kurt Zisa"] = {
-        MAX_HP = 1800, 
+        MAX_HP = 1800, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, 
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil,
         BATTLE_THEME = nil 
     },
     ["Cave of Wonders Guardian"] = { 
-        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 600, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Parasite Cage"] = { 
-        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 900, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ursula"] = {
-        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 600, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Giant Ursula"] = { 
-        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Flotsam and Jetsam"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Atlantica Shark"] = { 
-        MAX_HP = 300, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Lock"] = { 
-        MAX_HP = 10, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 10, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Shock"] = { 
-        MAX_HP = 10, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 10, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Barrel"] = { 
-        MAX_HP = 10, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 10, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Oogie Boogie"] = { 
-        MAX_HP = 600, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 600, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Oogie's Manor"] = { 
-        MAX_HP = 1, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Captain Hook"] = { 
-        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Phantom"] = { 
-        MAX_HP = 1800, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1800, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["AntiSora"] = { 
-        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 900, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Maleficent"] = {
-        MAX_HP = 900, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 900, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Maleficent Dragon"] = { 
-        MAX_HP = 1500, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1500, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku - Soul Eater"] = { 
-        MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Riku-Ansem"] = { 
-       MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Dark Riku"] = { 
-       MAX_HP = 1200, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Chernabog"] = { 
-       MAX_HP = 1800, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = 1800, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ansem with Guardian"] = { 
-       MAX_HP = 2100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = 2100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Bit Sniper"] = { 
-       MAX_HP = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = nil, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["World of Chaos"] = {
-       MAX_HP = 2700, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = 2700, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ansem - Final Boss"] = { 
-       MAX_HP = 2100, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = "KHFM_AnsemShipTheme.win32.scd", },
+       MAX_HP = 2100, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = "KHFM_AnsemShipTheme.win32.scd", },
     ["Xemnas - Enigmatic Man"] = { 
-       MAX_HP = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+       MAX_HP = 9999, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Yuffie"] = {
        MAX_HP = 999,
+       DAMAGE_TAKEN = 1.00,
+       DAMAGE_FLOOR = nil,
+       DAMAGE_CEILING = nil,
        ANIMATION_SPEED = {},
        OVERALL_SPEED = nil,
        BATTLE_THEME = nil
@@ -1098,6 +1126,8 @@ do
         row.hp_multiplier = nil
         row.max_hp = edit.MAX_HP
         row.damage_taken_multiplier = edit.DAMAGE_TAKEN or 1.00
+        row.damage_floor = edit.DAMAGE_FLOOR
+        row.damage_ceiling = edit.DAMAGE_CEILING
         row.speed_multiplier = nil
         row.overall_speed_multiplier = edit.OVERALL_SPEED
         row.animation_speed_multipliers = edit.ANIMATION_SPEED
@@ -1108,7 +1138,15 @@ do
             ] = animationId
         end
         row.stats_enabled = edit.MAX_HP ~= nil
-            or edit.DAMAGE_TAKEN ~= nil
+            or (
+                edit.DAMAGE_TAKEN ~= nil
+                and (
+                    type(edit.DAMAGE_TAKEN) ~= "number"
+                    or math.abs(edit.DAMAGE_TAKEN - 1.0) > 0.0001
+                )
+            )
+            or edit.DAMAGE_FLOOR ~= nil
+            or edit.DAMAGE_CEILING ~= nil
             or edit.OVERALL_SPEED ~= nil
             or next(edit.ANIMATION_SPEED) ~= nil
 
@@ -1149,7 +1187,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.28 keeps verified Sora+0x74 fight-roster tracking.
+        -- V4.4.29 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1243,15 +1281,15 @@ local HOOK_CALLSITE_PATCH = {
 
 local HOOK_CAVE_RVA = 0x3AF150
 local HOOK_CAVE_SIZE = 0xB0
-local HOOK_CODE_PREFIX_SIZE = 0x68
-local HOOK_SORA_RVA = HOOK_CAVE_RVA + 0x68
-local HOOK_DEFAULT_TAKEN_RVA = HOOK_CAVE_RVA + 0x70
-local HOOK_DEFAULT_DEALT_RVA = HOOK_CAVE_RVA + 0x74
-local HOOK_TARGET_TABLE_RVA = HOOK_CAVE_RVA + 0x78
-local HOOK_TARGET_SLOT_SIZE = 8
+local HOOK_CODE_PREFIX_SIZE = 0x64
+local HOOK_SORA_RVA = HOOK_CAVE_RVA + 0x64
+local HOOK_DEFAULT_DEALT_RVA = HOOK_CAVE_RVA + 0x6C
+local HOOK_TARGET_TABLE_RVA = HOOK_CAVE_RVA + 0x70
+local HOOK_TARGET_SLOT_SIZE = 16
 local HOOK_TARGET_SLOT_COUNT = 4
-local HOOK_LAST_DAMAGE_TARGET_RVA = HOOK_CAVE_RVA + 0x98
-local V19_COMPATIBILITY_SINK_RVA = HOOK_CAVE_RVA + 0xA0
+local HOOK_SLOT_MULTIPLIER_OFFSET = 4
+local HOOK_SLOT_CEILING_DELTA_OFFSET = 8
+local HOOK_SLOT_FLOOR_DELTA_OFFSET = 12
 
 -- Legacy v1.1-v1.5 hook image. It is recognized only so v2 can replace it
 -- safely when Lua scripts are reloaded without restarting the game.
@@ -1289,10 +1327,9 @@ local V1_5_HOOK_CAVE_BYTES = {
     0x00, 0x00, 0x00, 0x00,
 }
 
--- 176-byte v2 hook image assembled for module+0x3AF150. In addition to
--- scaling signed HP deltas, it records the exact non-Sora object passed to
--- the native final-HP routine. Lua clears the capture after processing it.
-local HOOK_CAVE_TEMPLATE = {
+-- V4.4.28's 176-byte multiplier-only hook. It is recognized so an F1 reload
+-- can replace the prior stable build without requiring a process restart.
+local V4_4_28_HOOK_CAVE_BYTES = {
     0x48, 0x89, 0xCE, 0x41, 0x89, 0xD6, 0x45, 0x85,
     0xF6, 0x7D, 0x56, 0x48, 0x3B, 0x0D, 0x56, 0x00,
     0x00, 0x00, 0x74, 0x37, 0x48, 0x89, 0x0D, 0x7D,
@@ -1322,6 +1359,42 @@ local HOOK_CAVE_TEMPLATE = {
     0x00, 0x00, 0x80, 0x3F,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00,
+}
+
+-- 176-byte v3 hook image assembled for module+0x3AF150.
+-- Each configured enemy slot is:
+--   { encoded_stat_page, multiplier, negative_ceiling, negative_floor }
+-- The multiplier is applied first. SSE max/min then clamps the signed negative
+-- HP delta before KH1's native final-HP routine performs the subtraction.
+local HOOK_CAVE_TEMPLATE = {
+    0x48, 0x89, 0xCE, 0x41, 0x89, 0xD6, 0x45, 0x85,
+    0xF6, 0x79, 0x57, 0x48, 0x3B, 0x0D, 0x52, 0x00,
+    0x00, 0x00, 0x74, 0x3C, 0x8B, 0x41, 0x6C, 0x4C,
+    0x8D, 0x05, 0x52, 0x00, 0x00, 0x00, 0x41, 0xB9,
+    0x04, 0x00, 0x00, 0x00, 0x41, 0x3B, 0x00, 0x74,
+    0x0A, 0x49, 0x83, 0xC0, 0x10, 0x41, 0xFF, 0xC9,
+    0x75, 0xF2, 0xC3, 0xF3, 0x41, 0x0F, 0x2A, 0xC6,
+    0xF3, 0x41, 0x0F, 0x59, 0x40, 0x04, 0xF3, 0x41,
+    0x0F, 0x5F, 0x40, 0x08, 0xF3, 0x41, 0x0F, 0x5D,
+    0x40, 0x0C, 0xF3, 0x44, 0x0F, 0x2C, 0xF0, 0xC3,
+    0xF3, 0x41, 0x0F, 0x2A, 0xC6, 0xF3, 0x0F, 0x59,
+    0x05, 0x0F, 0x00, 0x00, 0x00, 0xF3, 0x44, 0x0F,
+    0x2C, 0xF0, 0xC3, 0x00,
+
+    -- live Sora pointer
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    -- damage-to-Sora multiplier
+    0x00, 0x00, 0x80, 0x3F,
+
+    -- four { encoded_stat_page, multiplier, -ceiling, -floor } slots
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F,
+    0x00, 0x00, 0x00, 0xCF, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F,
+    0x00, 0x00, 0x00, 0xCF, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F,
+    0x00, 0x00, 0x00, 0xCF, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F,
+    0x00, 0x00, 0x00, 0xCF, 0x00, 0x00, 0x00, 0x00,
 }
 
 local V19_HOOK_CAVE_BYTES = {
@@ -1841,6 +1914,14 @@ local function buildProfileLookups()
             return false, name
                 .. ".damage_taken_multiplier must be above 0 and no greater than 10"
         end
+        local boundsOK, boundsReason = validateDamageBounds(
+            name,
+            profile.damage_floor,
+            profile.damage_ceiling
+        )
+        if not boundsOK then
+            return false, boundsReason
+        end
         if profile.speed_multiplier ~= nil
             and not validSpeedMultiplier(profile.speed_multiplier)
         then
@@ -2081,16 +2162,12 @@ local function profileDamageTakenMultiplier(profile)
     return SETTINGS.GLOBAL.DAMAGE_TAKEN_MULTIPLIER
 end
 
-local function publishedDamageTakenMultiplier(encodedStatPage)
-    for slot = 0, HOOK_TARGET_SLOT_COUNT - 1 do
-        local slotAddress = HOOK_TARGET_TABLE_RVA
-            + slot * HOOK_TARGET_SLOT_SIZE
-        local publishedId = safeReadInt(slotAddress, false)
-        if publishedId == encodedStatPage then
-            return safeReadFloat(slotAddress + 4, false), slot
-        end
-    end
-    return safeReadFloat(HOOK_DEFAULT_TAKEN_RVA, false), -1
+local function profileDamageFloor(profile)
+    return profile.damage_floor
+end
+
+local function profileDamageCeiling(profile)
+    return profile.damage_ceiling
 end
 
 local function profileSpeedMultiplier(profile, animation)
@@ -2468,6 +2545,37 @@ local function identifyProfile(object, nativeMaxHp)
     end
 
     return profile, modelCode, mobjIdentity, matchSource, worldId, roomId
+end
+
+local function validDamageBound(value)
+    return value == nil
+        or (
+            type(value) == "number"
+            and value >= 0
+            and value <= MAX_HP_STORAGE_VALUE
+            and value == math.floor(value)
+        )
+end
+
+local function validateDamageBounds(label, floorValue, ceilingValue)
+    if not validDamageBound(floorValue) then
+        return false, label
+            .. ".DAMAGE_FLOOR must be nil or an integer from 0 through "
+            .. tostring(MAX_HP_STORAGE_VALUE)
+    end
+    if not validDamageBound(ceilingValue) then
+        return false, label
+            .. ".DAMAGE_CEILING must be nil or an integer from 0 through "
+            .. tostring(MAX_HP_STORAGE_VALUE)
+    end
+    if floorValue ~= nil
+        and ceilingValue ~= nil
+        and floorValue > ceilingValue
+    then
+        return false, label
+            .. ".DAMAGE_FLOOR cannot be greater than DAMAGE_CEILING"
+    end
+    return true
 end
 
 -- =========================================================================
@@ -3728,116 +3836,8 @@ local function processPreHitLiveTarget()
     return candidate
 end
 
-local function processCapturedDamageTarget()
-    local target = safeReadLong(HOOK_LAST_DAMAGE_TARGET_RVA) or 0
-    if target == 0 then
-        return
-    end
-
-    local cleared, clearReason = safeWritePointer(
-        HOOK_LAST_DAMAGE_TARGET_RVA,
-        0
-    )
-    if not cleared then
-        record(
-            "NATIVE DAMAGE CAPTURE DISABLED: could not clear capture slot: "
-                .. tostring(clearReason),
-            true
-        )
-        return
-    end
-    capturedDamageSequence = capturedDamageSequence + 1
-
-    local entity = readEntity(target)
-    if entity == nil then
-        record(string.format(
-            "NATIVE DAMAGE TARGET REJECTED tick=%d event=%u "
-                .. "object=%s reason=no-valid-live-stat-page",
-            tick,
-            capturedDamageSequence,
-            pointerText(target)
-        ), true)
-        return
-    end
-
-    local matchedSource = nil
-    local lockOnTargets = collectLiveLockOnTargets()
-    for _, lockOn in ipairs(lockOnTargets) do
-        if lockOn.address == target then
-            matchedSource = lockOn.source
-            break
-        end
-    end
-
-    if matchedSource == nil then
-        local rejectedKey = addressKey(target)
-        if not rejectedDamageEvents[rejectedKey] then
-            rejectedDamageEvents[rejectedKey] = true
-            record(string.format(
-                "NATIVE DAMAGE TARGET REJECTED tick=%d event=%u "
-                    .. "object=%s stat_page=%s HP=%u/%u "
-                    .. "reason=not-current-lock-on-target lock_candidates=%u",
-                tick,
-                capturedDamageSequence,
-                pointerText(target),
-                pointerText(entity.statPage),
-                entity.hp,
-                entity.maxHp,
-                #lockOnTargets
-            ), true)
-        end
-        return
-    end
-
-    local existing = candidates[addressKey(entity.statPage)]
-    local previousHp = existing ~= nil and existing.hp or nil
-    local activeProfile = existing ~= nil and existing.profile or nil
-    if activeProfile == nil
-        and SETTINGS.ENABLE_CONFIRMED_TARGET_FALLBACK
-    then
-        activeProfile = CONFIRMED_TARGET_FALLBACK_PROFILE
-    end
-    local configuredMultiplier = activeProfile ~= nil
-        and profileDamageTakenMultiplier(activeProfile)
-        or SETTINGS.GLOBAL.DAMAGE_TAKEN_MULTIPLIER
-    local publishedMultiplier, publishedSlot =
-        publishedDamageTakenMultiplier(entity.encodedStatPage)
-    publishedMultiplier = publishedMultiplier or 1.0
-    local observedLoss = "unavailable"
-    if previousHp ~= nil and previousHp >= entity.hp then
-        observedLoss = tostring(previousHp - entity.hp)
-    end
-
-    record(string.format(
-        "NATIVE DAMAGE TARGET CONFIRMED tick=%d event=%u "
-            .. "object=%s stat_page=%s encoded=0x%08X HP=%u/%u "
-            .. "lock_source=%s previous_HP=%s observed_HP_loss=%s "
-            .. "configured_damage_taken=%.3f published_damage_taken=%.3f "
-            .. "published_slot=%s hook_match=%s",
-        tick,
-        capturedDamageSequence,
-        pointerText(target),
-        pointerText(entity.statPage),
-        entity.encodedStatPage,
-        entity.hp,
-        entity.maxHp,
-        matchedSource,
-        tostring(previousHp),
-        observedLoss,
-        configuredMultiplier,
-        publishedMultiplier,
-        publishedSlot >= 0 and tostring(publishedSlot) or "default",
-        tostring(
-            math.abs(configuredMultiplier - publishedMultiplier) <= 0.0001
-        )
-    ), true)
-    registerCandidate(
-        target,
-        "native-final-HP + " .. matchedSource,
-        true
-    )
-    saveReport()
-end
+-- Captured-hit telemetry was removed in v4.4.29. The damage hook reads
+-- only the bounded fight roster populated through verified Sora+0x74.
 
 -- =========================================================================
 -- LIVE ENTITY GRAPH DISCOVERY
@@ -4054,9 +4054,18 @@ local function installDamageHook()
         V19_HOOK_CAVE_BYTES,
         #V19_HOOK_CAVE_BYTES
     )
+    local previousStableHook = arraysEqual(
+        cave,
+        V4_4_28_HOOK_CAVE_BYTES,
+        #V4_4_28_HOOK_CAVE_BYTES
+    )
 
     if arraysEqual(callsite, HOOK_CALLSITE_PATCH) then
-        if not ownHook and not legacyHook and not v19Hook then
+        if not ownHook
+            and not previousStableHook
+            and not legacyHook
+            and not v19Hook
+        then
             return false, "HP hook call exists but the cave belongs to an unknown script"
         end
     elseif arraysEqual(callsite, HOOK_CALLSITE_ORIGINAL) then
@@ -4087,24 +4096,19 @@ local function installDamageHook()
         end
     end
 
-    local sinkOK, sinkReason = safeWriteFloat(
-        V19_COMPATIBILITY_SINK_RVA,
-        1.0,
-        false
-    )
-    if not sinkOK then
-        return false, "v19 compatibility sink failed: " .. sinkReason
-    end
-
     return true, ownHook
-        and "reused the existing v2 enemy-stat hook"
+        and "reused the existing v3 enemy-stat hook"
         or (
-            legacyHook
-            and "replaced the false-target v1.x hook"
+            previousStableHook
+            and "replaced the v4.4.28 multiplier-only hook"
             or (
-                v19Hook
-                and "replaced the compatible v19 hook"
-                or "installed the v2 enemy-stat hook"
+                legacyHook
+                and "replaced the false-target v1.x hook"
+                or (
+                    v19Hook
+                    and "replaced the compatible v19 hook"
+                    or "installed the v3 enemy-stat hook"
+                )
             )
         )
 end
@@ -4152,19 +4156,44 @@ local function publishFightLatchedDamageCandidate(candidate, slot)
     end
 
     local multiplier = profileDamageTakenMultiplier(candidate.profile)
-    if math.abs(multiplier - 1.0) <= 0.0001 then
+    local floorValue = profileDamageFloor(candidate.profile)
+    local ceilingValue = profileDamageCeiling(candidate.profile)
+    local hasFloor = floorValue ~= nil and floorValue > 0
+    local hasCeiling = ceilingValue ~= nil
+    if math.abs(multiplier - 1.0) <= 0.0001
+        and not hasFloor
+        and not hasCeiling
+    then
         return nil
     end
 
     local slotAddress = HOOK_TARGET_TABLE_RVA
         + slot * HOOK_TARGET_SLOT_SIZE
     local multiplierOK, multiplierReason = safeWriteFloat(
-        slotAddress + 4,
+        slotAddress + HOOK_SLOT_MULTIPLIER_OFFSET,
         multiplier,
         false
     )
     if not multiplierOK then
         return false, "target multiplier failed: " .. multiplierReason
+    end
+
+    local ceilingOK, ceilingReason = safeWriteFloat(
+        slotAddress + HOOK_SLOT_CEILING_DELTA_OFFSET,
+        hasCeiling and -ceilingValue or -2147483648.0,
+        false
+    )
+    if not ceilingOK then
+        return false, "target damage ceiling failed: " .. ceilingReason
+    end
+
+    local floorOK, floorReason = safeWriteFloat(
+        slotAddress + HOOK_SLOT_FLOOR_DELTA_OFFSET,
+        hasFloor and -floorValue or 0.0,
+        false
+    )
+    if not floorOK then
+        return false, "target damage floor failed: " .. floorReason
     end
 
     local idOK, idReason = safeWriteInt(
@@ -4177,10 +4206,12 @@ local function publishFightLatchedDamageCandidate(candidate, slot)
     end
 
     return true, string.format(
-        "%u:%08X:%.4f:%s",
+        "%u:%08X:multiplier=%.4f:floor=%s:ceiling=%s:%s",
         slot,
         candidate.encodedStatPage,
         multiplier,
+        tostring(floorValue),
+        tostring(ceilingValue),
         candidate.profile.name
     )
 end
@@ -4192,17 +4223,6 @@ local function updateDamageHookState()
     )
     if not pointerOK then
         return false, "Sora pointer update failed: " .. pointerReason
-    end
-
-    -- Unmatched non-Sora targets remain at 1.0 so party members and NPCs
-    -- cannot be scaled accidentally.
-    local defaultOK, defaultReason = safeWriteFloat(
-        HOOK_DEFAULT_TAKEN_RVA,
-        1.0,
-        false
-    )
-    if not defaultOK then
-        return false, "default target multiplier failed: " .. defaultReason
     end
 
     local dealtOK, dealtReason = safeWriteFloat(
@@ -4332,7 +4352,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.28 fight-latched stats + "
+        "KHFM Enemy Config v4.4.29 damage floor/ceiling + "
             .. "private themes / Stats report",
         false
     )
@@ -4450,7 +4470,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.28: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
+        "V4.4.29: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -4458,11 +4478,16 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
+        "Per-hit damage order: native damage -> DAMAGE_TAKEN multiplier -> "
+            .. "DAMAGE_FLOOR/DAMAGE_CEILING clamp -> native HP subtraction.",
+        true
+    )
+    record(
         "Named row values activate after model-code or unique-fingerprint identification across rooms; target-context is a fallback and unmapped targets use CONFIRMED_TARGET_FALLBACK.",
         true
     )
     record(
-        "V4.4.28: configured HP, damage, animation speed, and X/Z "
+        "V4.4.29: configured HP, damage, animation speed, and X/Z "
             .. "movement speed remain active for verified fight-roster "
             .. "targets after lock-on is lost or changed. Death, despawn, "
             .. "scene change, or native fight-music end releases them.",
@@ -4530,13 +4555,12 @@ function SETTINGS._combinedStatsFrame()
     if not hookOK then
         enabled = false
         record("DISABLED: " .. hookReason .. ".", true)
-        safeWriteFloat(HOOK_DEFAULT_TAKEN_RVA, 1.0, false)
         safeWriteFloat(HOOK_DEFAULT_DEALT_RVA, 1.0, false)
         saveReport()
         return
     end
 
-    -- Strict v4.4.28 boundary: recurring stats work may touch only the small
+    -- Strict v4.4.29 boundary: recurring stats work may touch only the small
     -- fight roster populated by verified Sora+0x74 targets. Global probing,
     -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
     -- remain unreachable.
@@ -7531,7 +7555,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.28 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.29 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -8103,7 +8127,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.28FightLatchedStatsNativeEnd] " .. message
+        "[EnemyConfigV4.4.29DamageFloorCeiling] " .. message
     )
 end
 
@@ -8154,7 +8178,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.28 / fight-latched stats + "
+        "KH1FM Enemy Config v4.4.29 / damage floor/ceiling + "
             .. "private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -10201,7 +10225,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.28 unreachable diagnostic fade/detach safeguard"
+                "v4.4.29 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11459,7 +11483,7 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.28 boundary: Sora+0x74 is still the only enemy-verification
+    -- Strict v4.4.29 boundary: Sora+0x74 is still the only enemy-verification
     -- route. Verified targets enter a bounded fight roster so HP, damage, and
     -- speed remain active without lock-on. The private-theme module also
     -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
@@ -11469,7 +11493,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.28FightLatchedStatsNativeEnd] READY: Sora+0x74 "
+        "[EnemyConfigV4.4.29DamageFloorCeiling] READY: Sora+0x74 "
             .. "verification, fight-latched HP, damage, animation speed, "
             .. "movement speed, and fight-latched private themes are enabled. "
             .. "Graph discovery, global probing, discovery-candidate refresh, "
