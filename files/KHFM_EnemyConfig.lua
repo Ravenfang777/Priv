@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_29_DamageFloorCeiling.lua
+-- File: KHFM_EnemyConfig_v4_4_30_DamageBoundsInitFix.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.29 FIGHT-LATCHED DAMAGE FLOOR/CEILING + PRIVATE THEMES.
+-- v4.4.30 DAMAGE-BOUNDS INITIALIZATION FIX.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -209,10 +209,10 @@ local ENEMY_SETTINGS = {
     ["Leon"] = {
         MAX_HP = 999,
         DAMAGE_TAKEN = 2.00,
-        DAMAGE_FLOOR = 150,
+        DAMAGE_FLOOR = nil,
         DAMAGE_CEILING = nil,
-        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 1.00, [0x49] = 4.00, [0xCA] = 1.00, [0xCB] = 1.00, [0xCC] = 1.00, [0xD7] = 4.00, },
-        OVERALL_SPEED = .5,
+        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
+        OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
     ["Guard Armor"] = { 
@@ -1187,7 +1187,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.29 keeps verified Sora+0x74 fight-roster tracking.
+        -- V4.4.30 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1777,6 +1777,40 @@ local function validExactMaximum(value)
             and value <= MAX_HP_STORAGE_VALUE
             and value == math.floor(value)
         )
+end
+
+-- Keep these definitions above buildProfileLookups. Lua resolves locals
+-- lexically, so a later declaration makes the earlier call look for a
+-- nonexistent global and aborts the controller during initialization.
+local function validDamageBound(value)
+    return value == nil
+        or (
+            type(value) == "number"
+            and value >= 0
+            and value <= MAX_HP_STORAGE_VALUE
+            and value == math.floor(value)
+        )
+end
+
+local function validateDamageBounds(label, floorValue, ceilingValue)
+    if not validDamageBound(floorValue) then
+        return false, label
+            .. ".DAMAGE_FLOOR must be nil or an integer from 0 through "
+            .. tostring(MAX_HP_STORAGE_VALUE)
+    end
+    if not validDamageBound(ceilingValue) then
+        return false, label
+            .. ".DAMAGE_CEILING must be nil or an integer from 0 through "
+            .. tostring(MAX_HP_STORAGE_VALUE)
+    end
+    if floorValue ~= nil
+        and ceilingValue ~= nil
+        and floorValue > ceilingValue
+    then
+        return false, label
+            .. ".DAMAGE_FLOOR cannot be greater than DAMAGE_CEILING"
+    end
+    return true
 end
 
 local function normalizeModelCode(value)
@@ -2545,37 +2579,6 @@ local function identifyProfile(object, nativeMaxHp)
     end
 
     return profile, modelCode, mobjIdentity, matchSource, worldId, roomId
-end
-
-local function validDamageBound(value)
-    return value == nil
-        or (
-            type(value) == "number"
-            and value >= 0
-            and value <= MAX_HP_STORAGE_VALUE
-            and value == math.floor(value)
-        )
-end
-
-local function validateDamageBounds(label, floorValue, ceilingValue)
-    if not validDamageBound(floorValue) then
-        return false, label
-            .. ".DAMAGE_FLOOR must be nil or an integer from 0 through "
-            .. tostring(MAX_HP_STORAGE_VALUE)
-    end
-    if not validDamageBound(ceilingValue) then
-        return false, label
-            .. ".DAMAGE_CEILING must be nil or an integer from 0 through "
-            .. tostring(MAX_HP_STORAGE_VALUE)
-    end
-    if floorValue ~= nil
-        and ceilingValue ~= nil
-        and floorValue > ceilingValue
-    then
-        return false, label
-            .. ".DAMAGE_FLOOR cannot be greater than DAMAGE_CEILING"
-    end
-    return true
 end
 
 -- =========================================================================
@@ -4057,7 +4060,7 @@ local function installDamageHook()
     local previousStableHook = arraysEqual(
         cave,
         V4_4_28_HOOK_CAVE_BYTES,
-        #V4_4_28_HOOK_CAVE_BYTES
+        0x68
     )
 
     if arraysEqual(callsite, HOOK_CALLSITE_PATCH) then
@@ -4352,7 +4355,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.29 damage floor/ceiling + "
+        "KHFM Enemy Config v4.4.30 damage-bounds initialization fix + "
             .. "private themes / Stats report",
         false
     )
@@ -4470,7 +4473,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.29: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
+        "V4.4.30: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -4487,7 +4490,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.29: configured HP, damage, animation speed, and X/Z "
+        "V4.4.30: configured HP, damage, animation speed, and X/Z "
             .. "movement speed remain active for verified fight-roster "
             .. "targets after lock-on is lost or changed. Death, despawn, "
             .. "scene change, or native fight-music end releases them.",
@@ -4560,7 +4563,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.29 boundary: recurring stats work may touch only the small
+    -- Strict v4.4.30 boundary: recurring stats work may touch only the small
     -- fight roster populated by verified Sora+0x74 targets. Global probing,
     -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
     -- remain unreachable.
@@ -7555,7 +7558,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.29 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.30 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -8127,7 +8130,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.29DamageFloorCeiling] " .. message
+        "[EnemyConfigV4.4.30DamageBoundsInitFix] " .. message
     )
 end
 
@@ -8178,7 +8181,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.29 / damage floor/ceiling + "
+        "KH1FM Enemy Config v4.4.30 / damage-bounds init fix + "
             .. "private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -10225,7 +10228,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.29 unreachable diagnostic fade/detach safeguard"
+                "v4.4.30 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11483,7 +11486,7 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.29 boundary: Sora+0x74 is still the only enemy-verification
+    -- Strict v4.4.30 boundary: Sora+0x74 is still the only enemy-verification
     -- route. Verified targets enter a bounded fight roster so HP, damage, and
     -- speed remain active without lock-on. The private-theme module also
     -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
@@ -11493,7 +11496,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.29DamageFloorCeiling] READY: Sora+0x74 "
+        "[EnemyConfigV4.4.30DamageBoundsInitFix] READY: Sora+0x74 "
             .. "verification, fight-latched HP, damage, animation speed, "
             .. "movement speed, and fight-latched private themes are enabled. "
             .. "Graph discovery, global probing, discovery-candidate refresh, "
