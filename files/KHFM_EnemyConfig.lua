@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_23_NarrowLockOnHPDamageAB.lua
+-- File: KHFM_EnemyConfig_v4_4_24_NarrowLockOnHPDamageSpeedAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.23 NARROW LOCK-ON HP + DAMAGE A/B.
+-- v4.4.24 NARROW LOCK-ON HP + DAMAGE + SPEED A/B.
 --
 -- Diagnostic boundary:
 --   * Enemy HP and damage scaling activate only from the verified Sora+0x74
@@ -11,7 +11,8 @@
 --   * The native damage hook publishes at most one target multiplier: the
 --     current Sora+0x74 target. Previously seen candidates are never swept.
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
---   * Animation-speed and movement-speed processing are bypassed at runtime.
+--   * Animation-speed and movement-speed processing run only for that same
+--     current Sora+0x74 target. Previously seen candidates are never swept.
 --   * The private-theme module is not constructed or initialized.
 --   * No private-audio hook, SCD file access, allocation, copy, registration,
 --     slot stop, playback, fade, detach, cache, or cleanup can run.
@@ -35,7 +36,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: narrow lock-on HP and damage; discovery, speed, and audio disabled"
+LUAGUI_DESC = "A/B test: narrow lock-on HP, damage, and speed; discovery and audio disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -379,9 +380,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_23_Narrow_LockOn_HP_Damage_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_24_Narrow_LockOn_HP_Damage_Speed_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_23_Narrow_LockOn_HP_Damage_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_24_Narrow_LockOn_HP_Damage_Speed_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1131,10 +1132,10 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.23 keeps only verified Sora+0x74 HP and damage tracking.
+        -- V4.4.24 keeps verified Sora+0x74 HP, damage, and speed tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
-        DIAGNOSTIC_DISABLE_SPEED = true,
+        DIAGNOSTIC_DISABLE_SPEED = false,
         ENABLE = SHARED.ENABLE,
         GLOBAL = SHARED.STATS_DEFAULTS,
         ENABLE_CONFIRMED_TARGET_FALLBACK =
@@ -3452,7 +3453,7 @@ end
 local function processPreHitLiveTarget()
     if currentSora == 0 then
         lastPreHitTarget = 0
-        return
+        return nil
     end
 
     -- Runtime report v2.0 proved this exact route reached the real enemy at
@@ -3464,14 +3465,14 @@ local function processPreHitLiveTarget()
     )
     if encodedTarget == nil or encodedTarget == 0 then
         lastPreHitTarget = 0
-        return
+        return nil
     end
 
     local target = resolveCompressedPointer(encodedTarget)
     local entity = readEntity(target)
     if entity == nil then
         lastPreHitTarget = 0
-        return
+        return nil
     end
 
     local firstFrameForTarget = target ~= lastPreHitTarget
@@ -3482,7 +3483,23 @@ local function processPreHitLiveTarget()
     )
     if not registered then
         lastPreHitTarget = 0
-        return
+        return nil
+    end
+
+    local candidate = candidates[addressKey(entity.statPage)]
+    if candidate == nil then
+        lastPreHitTarget = 0
+        return nil
+    end
+
+    -- Reacquiring this target starts movement scaling from a fresh position
+    -- baseline. This prevents displacement accumulated while lock-on was lost
+    -- from being interpreted as one live movement frame.
+    if firstFrameForTarget then
+        candidate.movementLastObject = nil
+        candidate.movementLastX = nil
+        candidate.movementLastZ = nil
+        candidate.movementActiveKey = nil
     end
 
     if firstFrameForTarget then
@@ -3500,6 +3517,7 @@ local function processPreHitLiveTarget()
         saveReport()
     end
     lastPreHitTarget = target
+    return candidate
 end
 
 local function processCapturedDamageTarget()
@@ -4048,7 +4066,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.23 narrow lock-on HP + damage A/B / Stats report",
+        "KHFM Enemy Config v4.4.24 narrow lock-on HP + damage + speed A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4152,7 +4170,8 @@ function SETTINGS._combinedStatsInit()
     enabled = true
 
     record(
-        "READY: " .. hookReason .. "; narrow Sora+0x74 HP and damage control is active.",
+        "READY: " .. hookReason
+            .. "; narrow Sora+0x74 HP, damage, animation speed, and movement speed control is active.",
         true
     )
     record(
@@ -4164,7 +4183,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.23 A/B: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. The damage table publishes only the current lock-on target.",
+        "V4.4.24 A/B: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. HP, damage, and speed use only the current lock-on target.",
         true
     )
     record(
@@ -4176,9 +4195,9 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.23 A/B: animation-speed and X/Z movement-speed processing are "
-            .. "fully bypassed. Configured speed values remain preserved but "
-            .. "cannot read or write enemy motion in this build.",
+        "V4.4.24 A/B: configured animation-speed and X/Z movement-speed "
+            .. "processing is active only for the current verified Sora+0x74 "
+            .. "target. Previously seen candidates are never revisited.",
         true
     )
     record(
@@ -4214,7 +4233,7 @@ function SETTINGS._combinedStatsFrame()
         resetDiscovery(sora)
     end
 
-    processPreHitLiveTarget()
+    local narrowCandidate = processPreHitLiveTarget()
 
     local hookOK, hookReason = updateDamageHookState()
     if not hookOK then
@@ -4226,9 +4245,14 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.23 boundary: the Sora+0x74 target above is the only entity
-    -- inspected and published. Global probing, graph traversal, accumulated
-    -- candidate refresh, captured-hit telemetry, and speed are unreachable.
+    -- Strict v4.4.24 boundary: animation and X/Z movement scaling may touch
+    -- only the same current Sora+0x74 candidate used for HP and damage.
+    -- Global probing, graph traversal, accumulated candidate refresh, and
+    -- captured-hit telemetry remain unreachable.
+    if narrowCandidate ~= nil then
+        observeAndApplySafeAnimationSpeed(narrowCandidate)
+        SETTINGS._applySafeMovementSpeed(narrowCandidate)
+    end
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10948,18 +10972,19 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.23 A/B boundary: construct and run only narrow Sora+0x74
-    -- HP plus current-lock-on damage scaling. Broad discovery/refresh,
-    -- captured-hit telemetry, speed, and audio are bypassed.
+    -- Strict v4.4.24 A/B boundary: construct and run only narrow Sora+0x74
+    -- HP, current-lock-on damage scaling, and current-lock-on speed.
+    -- Broad discovery/refresh, captured-hit telemetry, and audio are bypassed.
     -- buildPrivateThemeModule() remains in the source for byte-comparison
     -- against v4.4.18, but it is never called. Therefore no private-audio
     -- native hook or resource lifecycle can initialize.
     statsModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.23NarrowLockOnHPDamageAB] READY: Sora+0x74 HP "
-            .. "and current-target damage scaling are enabled. Graph "
+        "[EnemyConfigV4.4.24NarrowLockOnHPDamageSpeedAB] READY: Sora+0x74 HP, "
+            .. "current-target damage, animation speed, and movement speed "
+            .. "are enabled. Graph "
             .. "discovery, global probing, accumulated candidate refresh, "
-            .. "captured-hit telemetry, speed, and private themes are inactive."
+            .. "captured-hit telemetry, and private themes are inactive."
     )
 end
 
