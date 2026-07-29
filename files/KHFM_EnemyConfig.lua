@@ -1,10 +1,12 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_21_HPDiscoveryNoDamageHookAB.lua
+-- File: KHFM_EnemyConfig_v4_4_22_NarrowLockOnHPOnlyAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.21 HP/DISCOVERY WITHOUT DAMAGE HOOK A/B.
+-- v4.4.22 NARROW LOCK-ON HP-ONLY A/B.
 --
 -- Diagnostic boundary:
---   * Enemy HP, graph discovery, and candidate refresh are active.
+--   * Enemy HP activates only from the verified Sora+0x74 lock-on target.
+--   * Broad graph discovery, global memory probing, and candidate refresh are
+--     bypassed at runtime.
 --   * The native damage hook, damage-table publication, and captured-hit
 --     processing are bypassed.
 --   * Animation-speed and movement-speed processing are bypassed at runtime.
@@ -31,7 +33,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: HP/discovery active; damage hook, speed, and private audio disabled"
+LUAGUI_DESC = "A/B test: narrow lock-on HP only; discovery, damage, speed, and audio disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -373,9 +375,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_21_HP_Discovery_No_Damage_Hook_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_22_Narrow_LockOn_HP_Only_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_21_HP_Discovery_No_Damage_Hook_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_22_Narrow_LockOn_HP_Only_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1124,8 +1126,9 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.21 keeps the same HP/discovery workload as v4.4.20 while making
-        -- every native damage-hook install/update/capture path unreachable.
+        -- V4.4.22 keeps only verified Sora+0x74 HP tracking. Every broad
+        -- discovery/refresh and native damage path is unreachable.
+        DIAGNOSTIC_NARROW_LOCKON_HP_ONLY = true,
         DIAGNOSTIC_DISABLE_DAMAGE_HOOK = true,
         DIAGNOSTIC_DISABLE_SPEED = true,
         ENABLE = SHARED.ENABLE,
@@ -3762,7 +3765,9 @@ local function resetDiscovery(newSora)
     candidateCount = 0
     globalScanOffset = 0
     lastOverflowCount = -1
-    restartGraph()
+    if not SETTINGS.DIAGNOSTIC_NARROW_LOCKON_HP_ONLY then
+        restartGraph()
+    end
     record(string.format(
         "DISCOVERY RESET tick=%d Sora=%s",
         tick,
@@ -4072,7 +4077,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.21 HP/discovery without damage hook A/B / Stats report",
+        "KHFM Enemy Config v4.4.22 narrow lock-on HP-only A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4159,11 +4164,10 @@ function SETTINGS._combinedStatsInit()
     end
 
     pcall(SetHertz, 60)
-    restartGraph()
     enabled = true
 
     record(
-        "READY: native damage hook is intentionally not installed; HP/discovery control is active.",
+        "READY: narrow Sora+0x74 HP control is active; broad discovery and the native damage hook are inactive.",
         true
     )
     record(
@@ -4175,7 +4179,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.21 A/B: damage-taken/dealt scaling and native final-HP capture are fully bypassed.",
+        "V4.4.22 A/B: graph discovery, global probing, candidate refresh, damage scaling, and native final-HP capture are fully bypassed.",
         true
     )
     record(
@@ -4187,7 +4191,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.21 A/B: animation-speed and X/Z movement-speed processing are "
+        "V4.4.22 A/B: animation-speed and X/Z movement-speed processing are "
             .. "fully bypassed. Configured speed values remain preserved but "
             .. "cannot read or write enemy motion in this build.",
         true
@@ -4215,16 +4219,11 @@ function SETTINGS._combinedStatsFrame()
         resetDiscovery(sora)
     end
 
-    processNarrowGlobalProbe()
-    processGraph()
     processPreHitLiveTarget()
 
-    -- The damage hook, target-table publication, and captured-hit telemetry are
-    -- intentionally unreachable in this A/B build.
-    refreshCandidates()
-    if not SETTINGS.DIAGNOSTIC_DISABLE_SPEED then
-        updateSafeAnimationSpeeds()
-    end
+    -- Strict v4.4.22 boundary: the Sora+0x74 target above is the only entity
+    -- inspected. Global probing, graph traversal, broad candidate refresh,
+    -- damage publication/capture, and all speed work are unreachable.
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10944,17 +10943,17 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.21 A/B boundary: construct and run only the stats module,
-    -- with damage-hook and animation/movement-speed paths bypassed.
+    -- Strict v4.4.22 A/B boundary: construct and run only narrow Sora+0x74 HP.
+    -- Broad discovery/refresh, damage, speed, and audio are bypassed.
     -- buildPrivateThemeModule() remains in the source for byte-comparison
     -- against v4.4.18, but it is never called. Therefore no private-audio
     -- native hook or resource lifecycle can initialize.
     statsModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.21HPDiscoveryNoDamageHookAB] READY: enemy HP "
-            .. "and discovery are enabled. Damage scaling, the native damage "
-            .. "hook, animation speed, movement speed, and private themes are "
-            .. "inactive."
+        "[EnemyConfigV4.4.22NarrowLockOnHPOnlyAB] READY: Sora+0x74 HP "
+            .. "tracking is enabled. Graph discovery, global probing, "
+            .. "candidate refresh, damage scaling, speed, and private themes "
+            .. "are inactive."
     )
 end
 
