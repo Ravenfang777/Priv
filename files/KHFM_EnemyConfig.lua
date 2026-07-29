@@ -209,10 +209,10 @@ local ENEMY_SETTINGS = {
     ["Leon"] = {
         MAX_HP = 999,
         DAMAGE_TAKEN = 2.00,
-        DAMAGE_FLOOR = nil,
+        DAMAGE_FLOOR = 150,
         DAMAGE_CEILING = nil,
-        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
-        OVERALL_SPEED = 1.2,
+        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 1.00, [0x49] = 4.00, [0xCA] = 1.00, [0xCB] = 1.00, [0xCC] = 1.00, [0xD7] = 4.00, },
+        OVERALL_SPEED = .5,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
     ["Guard Armor"] = { 
