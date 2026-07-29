@@ -1,14 +1,16 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_22_NarrowLockOnHPOnlyAB.lua
+-- File: KHFM_EnemyConfig_v4_4_23_NarrowLockOnHPDamageAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.22 NARROW LOCK-ON HP-ONLY A/B.
+-- v4.4.23 NARROW LOCK-ON HP + DAMAGE A/B.
 --
 -- Diagnostic boundary:
---   * Enemy HP activates only from the verified Sora+0x74 lock-on target.
+--   * Enemy HP and damage scaling activate only from the verified Sora+0x74
+--     lock-on target.
 --   * Broad graph discovery, global memory probing, and candidate refresh are
 --     bypassed at runtime.
---   * The native damage hook, damage-table publication, and captured-hit
---     processing are bypassed.
+--   * The native damage hook publishes at most one target multiplier: the
+--     current Sora+0x74 target. Previously seen candidates are never swept.
+--   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
 --   * Animation-speed and movement-speed processing are bypassed at runtime.
 --   * The private-theme module is not constructed or initialized.
 --   * No private-audio hook, SCD file access, allocation, copy, registration,
@@ -33,12 +35,13 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: narrow lock-on HP only; discovery, damage, speed, and audio disabled"
+LUAGUI_DESC = "A/B test: narrow lock-on HP and damage; discovery, speed, and audio disabled"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
 --
 -- MAX_HP          Exact HP amount.
+-- DAMAGE_TAKEN    Incoming damage multiplier. 1.00 is native damage.
 -- ANIMATION_SPEED Per-animation animation + world-movement multipliers:
 --                 { [animation ID] = speed }
 -- OVERALL_SPEED   Animation + world-movement speed for all other animations.
@@ -172,6 +175,7 @@ local ENEMY_SETTINGS = {
     },
     ["Leon"] = {
         MAX_HP = 999,
+        DAMAGE_TAKEN = 2.00,
         ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
@@ -375,9 +379,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_22_Narrow_LockOn_HP_Only_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_23_Narrow_LockOn_HP_Damage_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_22_Narrow_LockOn_HP_Only_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_23_Narrow_LockOn_HP_Damage_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1075,7 +1079,7 @@ do
 
         row.hp_multiplier = nil
         row.max_hp = edit.MAX_HP
-        row.damage_taken_multiplier = 1.00
+        row.damage_taken_multiplier = edit.DAMAGE_TAKEN or 1.00
         row.speed_multiplier = nil
         row.overall_speed_multiplier = edit.OVERALL_SPEED
         row.animation_speed_multipliers = edit.ANIMATION_SPEED
@@ -1086,6 +1090,7 @@ do
             ] = animationId
         end
         row.stats_enabled = edit.MAX_HP ~= nil
+            or edit.DAMAGE_TAKEN ~= nil
             or edit.OVERALL_SPEED ~= nil
             or next(edit.ANIMATION_SPEED) ~= nil
 
@@ -1126,10 +1131,9 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.22 keeps only verified Sora+0x74 HP tracking. Every broad
-        -- discovery/refresh and native damage path is unreachable.
-        DIAGNOSTIC_NARROW_LOCKON_HP_ONLY = true,
-        DIAGNOSTIC_DISABLE_DAMAGE_HOOK = true,
+        -- V4.4.23 keeps only verified Sora+0x74 HP and damage tracking.
+        -- Every broad discovery/refresh path remains unreachable.
+        DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = true,
         ENABLE = SHARED.ENABLE,
         GLOBAL = SHARED.STATS_DEFAULTS,
@@ -3477,6 +3481,7 @@ local function processPreHitLiveTarget()
         true
     )
     if not registered then
+        lastPreHitTarget = 0
         return
     end
 
@@ -3765,7 +3770,7 @@ local function resetDiscovery(newSora)
     candidateCount = 0
     globalScanOffset = 0
     lastOverflowCount = -1
-    if not SETTINGS.DIAGNOSTIC_NARROW_LOCKON_HP_ONLY then
+    if not SETTINGS.DIAGNOSTIC_NARROW_LOCKON_ONLY then
         restartGraph()
     end
     record(string.format(
@@ -3953,103 +3958,69 @@ local function updateDamageHookState()
         end
     end
 
-    local liveTargets = {}
-    for _, key in ipairs(candidateOrder) do
-        local candidate = candidates[key]
-        if candidateIsLive(candidate) then
-            local multiplier = profileDamageTakenMultiplier(
-                candidate.profile
+    -- Publish only the current Sora+0x74 target. Do not revisit accumulated
+    -- candidates: that recurring sweep was part of the proven stutter source.
+    local candidate = nil
+    if lastPreHitTarget ~= 0 then
+        local entity = readEntity(lastPreHitTarget)
+        if entity ~= nil then
+            candidate = candidates[addressKey(entity.statPage)]
+        end
+    end
+
+    local routeKey = ""
+    if candidateIsLive(candidate) then
+        local multiplier = profileDamageTakenMultiplier(candidate.profile)
+        if math.abs(multiplier - 1.0) > 0.0001 then
+            local multiplierOK, multiplierReason = safeWriteFloat(
+                HOOK_TARGET_TABLE_RVA + 4,
+                multiplier,
+                false
             )
-            if math.abs(multiplier - 1.0) > 0.0001 then
-                liveTargets[#liveTargets + 1] = {
-                    encoded = candidate.encodedStatPage,
-                    multiplier = multiplier,
-                    name = candidate.profile.name,
-                }
+            if not multiplierOK then
+                return false, "target multiplier failed: " .. multiplierReason
             end
+
+            local idOK, idReason = safeWriteInt(
+                HOOK_TARGET_TABLE_RVA,
+                candidate.encodedStatPage,
+                false
+            )
+            if not idOK then
+                return false, "target ID publish failed: " .. idReason
+            end
+
+            routeKey = string.format(
+                "%08X:%.4f:%s",
+                candidate.encodedStatPage,
+                multiplier,
+                candidate.profile.name
+            )
         end
     end
 
-    local slotCount = math.min(
-        #liveTargets,
-        HOOK_TARGET_SLOT_COUNT
-    )
-    for index = 1, slotCount do
-        local target = liveTargets[index]
-        local slotAddress = HOOK_TARGET_TABLE_RVA
-            + (index - 1) * HOOK_TARGET_SLOT_SIZE
-        local multiplierOK, multiplierReason = safeWriteFloat(
-            slotAddress + 4,
-            target.multiplier,
-            false
-        )
-        if not multiplierOK then
-            return false, "target multiplier failed: " .. multiplierReason
-        end
-    end
-    for index = 1, slotCount do
-        local target = liveTargets[index]
-        local slotAddress = HOOK_TARGET_TABLE_RVA
-            + (index - 1) * HOOK_TARGET_SLOT_SIZE
-        local idOK, idReason = safeWriteInt(
-            slotAddress,
-            target.encoded,
-            false
-        )
-        if not idOK then
-            return false, "target ID publish failed: " .. idReason
-        end
-    end
-
-    local routeParts = {}
-    for index = 1, slotCount do
-        local target = liveTargets[index]
-        routeParts[#routeParts + 1] = string.format(
-            "%08X:%.4f:%s",
-            target.encoded,
-            target.multiplier,
-            target.name
-        )
-    end
-    local routeKey = table.concat(routeParts, "|")
     if routeKey ~= damageRouteLogKey then
         damageRouteLogKey = routeKey
-        if slotCount == 0 then
+        if routeKey == "" then
             record(
                 "DAMAGE ROUTE NATIVE tick=" .. tostring(tick)
-                    .. " no confirmed target currently requests scaled damage",
+                    .. " current lock-on requests native damage",
                 false
             )
         else
-            for index = 1, slotCount do
-                local target = liveTargets[index]
-                record(string.format(
-                    "DAMAGE ROUTE ACTIVE tick=%d slot=%d enemy=%s "
-                        .. "encoded=0x%08X damage_taken_multiplier=%.3f",
-                    tick,
-                    index - 1,
-                    target.name,
-                    target.encoded,
-                    target.multiplier
-                ), true)
-            end
-        end
-    end
-
-    local overflow = math.max(0, #liveTargets - HOOK_TARGET_SLOT_COUNT)
-    if overflow ~= lastOverflowCount then
-        lastOverflowCount = overflow
-        if overflow > 0 then
             record(string.format(
-                "TARGET TABLE OVERFLOW tick=%d live_scaled_targets=%d "
-                    .. "capacity=%d overflow=%d; overflow targets remain at 1.0",
+                "DAMAGE ROUTE ACTIVE tick=%d slot=0 enemy=%s "
+                    .. "encoded=0x%08X damage_taken_multiplier=%.3f "
+                    .. "source=Sora+0x74",
                 tick,
-                #liveTargets,
-                HOOK_TARGET_SLOT_COUNT,
-                overflow
+                candidate.profile.name,
+                candidate.encodedStatPage,
+                profileDamageTakenMultiplier(candidate.profile)
             ), true)
         end
     end
+
+    lastOverflowCount = 0
 
     return true
 end
@@ -4077,7 +4048,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.22 narrow lock-on HP-only A/B / Stats report",
+        "KHFM Enemy Config v4.4.23 narrow lock-on HP + damage A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4163,15 +4134,29 @@ function SETTINGS._combinedStatsInit()
         record("PROFILE WARNING: " .. warning, true)
     end
 
+    local executableOK, executableReason = validateExecutable()
+    if not executableOK then
+        record("DISABLED: " .. executableReason .. ".", true)
+        saveReport()
+        return
+    end
+
+    local hookOK, hookReason = installDamageHook()
+    if not hookOK then
+        record("DISABLED: " .. hookReason .. ".", true)
+        saveReport()
+        return
+    end
+
     pcall(SetHertz, 60)
     enabled = true
 
     record(
-        "READY: narrow Sora+0x74 HP control is active; broad discovery and the native damage hook are inactive.",
+        "READY: " .. hookReason .. "; narrow Sora+0x74 HP and damage control is active.",
         true
     )
     record(
-        "HP settings activate from the verified pre-hit Sora+0x74 live target.",
+        "HP and damage-taken settings activate only from the verified pre-hit Sora+0x74 live target.",
         true
     )
     record(
@@ -4179,7 +4164,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.22 A/B: graph discovery, global probing, candidate refresh, damage scaling, and native final-HP capture are fully bypassed.",
+        "V4.4.23 A/B: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. The damage table publishes only the current lock-on target.",
         true
     )
     record(
@@ -4191,7 +4176,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.22 A/B: animation-speed and X/Z movement-speed processing are "
+        "V4.4.23 A/B: animation-speed and X/Z movement-speed processing are "
             .. "fully bypassed. Configured speed values remain preserved but "
             .. "cannot read or write enemy motion in this build.",
         true
@@ -4214,6 +4199,16 @@ function SETTINGS._combinedStatsFrame()
 
     tick = tick + 1
 
+    if tick % 120 == 0 and not ownHookStillInstalled() then
+        enabled = false
+        record(
+            "DISABLED: another script replaced the enemy-stat damage hook after initialization.",
+            true
+        )
+        saveReport()
+        return
+    end
+
     local sora = safeReadLong(SORA_POINTER) or 0
     if sora ~= currentSora then
         resetDiscovery(sora)
@@ -4221,9 +4216,19 @@ function SETTINGS._combinedStatsFrame()
 
     processPreHitLiveTarget()
 
-    -- Strict v4.4.22 boundary: the Sora+0x74 target above is the only entity
-    -- inspected. Global probing, graph traversal, broad candidate refresh,
-    -- damage publication/capture, and all speed work are unreachable.
+    local hookOK, hookReason = updateDamageHookState()
+    if not hookOK then
+        enabled = false
+        record("DISABLED: " .. hookReason .. ".", true)
+        safeWriteFloat(HOOK_DEFAULT_TAKEN_RVA, 1.0, false)
+        safeWriteFloat(HOOK_DEFAULT_DEALT_RVA, 1.0, false)
+        saveReport()
+        return
+    end
+
+    -- Strict v4.4.23 boundary: the Sora+0x74 target above is the only entity
+    -- inspected and published. Global probing, graph traversal, accumulated
+    -- candidate refresh, captured-hit telemetry, and speed are unreachable.
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10943,17 +10948,18 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.22 A/B boundary: construct and run only narrow Sora+0x74 HP.
-    -- Broad discovery/refresh, damage, speed, and audio are bypassed.
+    -- Strict v4.4.23 A/B boundary: construct and run only narrow Sora+0x74
+    -- HP plus current-lock-on damage scaling. Broad discovery/refresh,
+    -- captured-hit telemetry, speed, and audio are bypassed.
     -- buildPrivateThemeModule() remains in the source for byte-comparison
     -- against v4.4.18, but it is never called. Therefore no private-audio
     -- native hook or resource lifecycle can initialize.
     statsModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.22NarrowLockOnHPOnlyAB] READY: Sora+0x74 HP "
-            .. "tracking is enabled. Graph discovery, global probing, "
-            .. "candidate refresh, damage scaling, speed, and private themes "
-            .. "are inactive."
+        "[EnemyConfigV4.4.23NarrowLockOnHPDamageAB] READY: Sora+0x74 HP "
+            .. "and current-target damage scaling are enabled. Graph "
+            .. "discovery, global probing, accumulated candidate refresh, "
+            .. "captured-hit telemetry, speed, and private themes are inactive."
     )
 end
 
