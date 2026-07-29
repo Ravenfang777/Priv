@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_25_NarrowStatsThemePlayHoldAB.lua
+-- File: KHFM_EnemyConfig_v4_4_27_FightLatchedNativeEnd.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.25 NARROW STATS + PRIVATE THEME PLAY/HOLD A/B.
+-- v4.4.27 NARROW STATS + FIGHT-LATCHED PRIVATE THEMES.
 --
 -- Diagnostic boundary:
 --   * Enemy HP and damage scaling activate only from the verified Sora+0x74
@@ -16,10 +16,14 @@
 --   * Private-theme identification also reads only that same Sora+0x74 target;
 --     its graph traversal, global lock-on probes, and candidate sweep are
 --     bypassed.
---   * The first matched private SCD is allocated, copied, registered, preceded
---     by one BGM-slot stop, played once, and held until the game exits.
---   * Theme switching, replay, fade, detach, cache reuse, and cleanup are
---     unreachable.
+--   * The first configured theme activated in a fight owns that encounter.
+--     Later themed or unthemed lock-on targets cannot switch or cancel it.
+--   * Lock-on loss does not stop the latched theme. KH1's exact private
+--     playback object is checked through the small native BGM playback list.
+--   * The latch releases only after KH1 removes that playback object through
+--     its native stop/fade lifecycle, or after a world/room scene change.
+--   * Audio commands remain one-shot and transition-driven. No broad enemy
+--     discovery, global target probe, or accumulated candidate sweep returns.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -40,7 +44,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: narrow HP/damage/speed plus one private theme play-and-hold"
+LUAGUI_DESC = "Narrow HP/damage/speed with fight-latched private themes"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -52,8 +56,8 @@ LUAGUI_DESC = "A/B test: narrow HP/damage/speed plus one private theme play-and-
 -- OVERALL_SPEED   Animation + world-movement speed for all other animations.
 --                 Avoid on projectile users.
 -- BATTLE_THEME    Private .win32.scd filename beside this Lua.
---                 nil starts no new private theme. If another enemy's
---                 private theme is already playing, lock-on preserves it.
+--                 The first configured theme started in a fight is latched.
+--                 Target changes cannot switch or cancel it mid-fight.
 --
 -- Wakka contains the verified example. Every named row is addressable.
 
@@ -384,9 +388,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_25_Narrow_Stats_Theme_Play_Hold_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_27_Fight_Latched_Native_End_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_25_Narrow_Stats_Theme_Play_Hold_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_27_Fight_Latched_Native_End_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1136,7 +1140,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.25 keeps verified Sora+0x74 HP, damage, and speed tracking.
+        -- V4.4.27 keeps verified Sora+0x74 HP, damage, and speed tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -4070,8 +4074,8 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.25 narrow stats + private-theme "
-            .. "play-and-hold A/B / Stats report",
+        "KHFM Enemy Config v4.4.27 narrow stats + fight-latched "
+            .. "private themes / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4188,7 +4192,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.25 A/B: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. HP, damage, and speed use only the current lock-on target.",
+        "V4.4.27: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. HP, damage, and speed use only the current lock-on target.",
         true
     )
     record(
@@ -4200,7 +4204,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.25 A/B: configured animation-speed and X/Z movement-speed "
+        "V4.4.27: configured animation-speed and X/Z movement-speed "
             .. "processing is active only for the current verified Sora+0x74 "
             .. "target. Previously seen candidates are never revisited.",
         true
@@ -4250,7 +4254,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.25 boundary: animation and X/Z movement scaling may touch
+    -- Strict v4.4.27 boundary: animation and X/Z movement scaling may touch
     -- only the same current Sora+0x74 candidate used for HP and damage.
     -- Global probing, graph traversal, accumulated candidate refresh, and
     -- captured-hit telemetry remain unreachable.
@@ -7249,13 +7253,12 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.25 split: identify only the current Sora+0x74 target,
-    -- then allocate, copy, register, stop the selected BGM slot once, and play
-    -- one selected private SCD exactly once. Leave it active until the game
-    -- process exits. Graph/global target discovery, replay, fade, detach,
-    -- cache activation, and freeing are unreachable. The verified narrow
-    -- HP/damage/speed subsystem remains active.
-    DIAGNOSTIC_PLAY_ONCE = true,
+    -- V4.4.27 keeps identification on the current Sora+0x74 target, then
+    -- latches the first activated theme until KH1 ends that exact playback
+    -- object or the scene changes. Target changes never switch the song.
+    -- No graph/global target discovery or accumulated candidate sweep is
+    -- reachable. The verified narrow HP/damage/speed subsystem remains active.
+    DIAGNOSTIC_PLAY_ONCE = false,
     DIAGNOSTIC_MAX_PLAYS = 1,
     DIAGNOSTIC_SKIP_PREPLAY_STOP = false,
     DIAGNOSTIC_FADE_DETACH_ONCE = false,
@@ -7264,6 +7267,9 @@ local SETTINGS = {
     PRESENCE_HOLD_TICKS = SHARED.PRESENCE_HOLD_TICKS or 180,
     FADE_OUT_MS = SHARED.PRIVATE_THEME_FADE_OUT_MS or 1500,
     DEFAULT_BGM_ID = 1,
+    PLAYBACK_CHECK_INTERVAL_TICKS = 3,
+    PLAYBACK_END_CONFIRM_CHECKS = 2,
+    MAX_PLAYBACK_LIST_NODES = 32,
     FIRST_PRIVATE_MUSIC_ID = 900,
     REQUIRE_VERIFIED_SORA_TARGET = true,
     MAX_PLAUSIBLE_THEME_HP = 1000000,
@@ -7279,7 +7285,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_25_Narrow_Stats_Theme_Play_Hold_AB_Report.txt",
+        "KHFM_EnemyConfig_v4_4_27_Fight_Latched_Native_End_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7335,6 +7341,9 @@ local FILE_MANAGER_UNLOCK_SIGNATURE = {
 local BGM_RESOURCE_LIST_HEAD_RVA = 0x004D65D8
 local BGM_RESOURCE_LIST_TAIL_RVA = 0x004D65E0
 SETTINGS._BGM_RESOURCE_LIST_COUNT_RVA = 0x004D65E8
+-- Active BGM playback objects are a separate, normally tiny linked list.
+-- KH1 removes the exact object when its native stop/fade lifecycle completes.
+local BGM_PLAYBACK_LIST_HEAD_RVA = 0x004D6618
 -- KH1's original LoadFileWithMalloc implementation calls the imported
 -- 16-byte-aligned allocator and matching free function at these IAT entries.
 -- The call-site signatures prevent using them on an unsupported executable.
@@ -7763,6 +7772,19 @@ local pendingTheme = nil
 local pendingMode = nil
 local activeSwitchQueued = false
 local stopRequested = false
+SETTINGS._fightThemeLatched = false
+SETTINGS._latchedTargetObject = 0
+SETTINGS._currentTargetObject = 0
+SETTINGS._activePlaybackNode = 0
+SETTINGS._activePlaybackHandle = 0
+SETTINGS._activePlaybackIdentity = 0
+SETTINGS._playbackNodeSeen = false
+SETTINGS._playbackNodeMissingChecks = 0
+SETTINGS._lastPlaybackCheckTick = -100000
+SETTINGS._awaitingFreshEncounter = false
+SETTINGS._releaseTargetObject = 0
+SETTINGS._nativeEndCleanupQueued = false
+SETTINGS._pendingFadeReason = nil
 SETTINGS._unthemedTargetTick = -100000
 SETTINGS._unthemedTargetObject = 0
 SETTINGS._lastPreservedTargetObject = 0
@@ -7785,6 +7807,7 @@ local lastTargetResource = 0
 SETTINGS._lastTargetNode = 0
 local totalActiveSwitches = 0
 local totalPrivateStops = 0
+local totalNativeFightEnds = 0
 local totalCachedBytes = 0
 local timelineRows = {}
 local timelineCapped = false
@@ -7802,7 +7825,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.25NarrowStatsThemePlayHoldAB] " .. message
+        "[EnemyConfigV4.4.27FightLatchedNativeEnd] " .. message
     )
 end
 
@@ -7853,15 +7876,14 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.25 / narrow stats + private-theme "
-            .. "play-and-hold A/B report",
+        "KH1FM Enemy Config v4.4.27 / narrow stats + fight-latched "
+            .. "private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
-        "Playback: the first selected private SCD is opened, allocated, "
-            .. "copied, and registered. Its configured BGM slot is stopped "
-            .. "exactly once before the private SCD is played exactly once. "
-            .. "It is never automatically faded or detached and remains "
-            .. "active until the game process exits. Replay, cache "
-            .. "activation, fade/detach, and cleanup are unreachable.",
+        "Playback: the first configured theme activated in a fight is latched. "
+            .. "The latch ignores every later themed or unthemed target and "
+            .. "does not react to lock-on loss. It releases only after KH1 "
+            .. "removes that exact BGM playback object through its native "
+            .. "stop/fade lifecycle, or after a scene change.",
         "Stats: enemy HP, damage-taken, animation-speed, and movement-speed "
             .. "process only the current Sora+0x74 target.",
         "Theme detection: only the current Sora+0x74 target is inspected; "
@@ -7871,11 +7893,14 @@ local function buildReport()
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
         "Valid theme rows: " .. tostring(SETTINGS.VALID_THEME_COUNT),
-        "Selection gate: verified live Sora+0x74 target only; "
-            .. "graph/model-only evidence is ignored for theme activation.",
-        "Unthemed-target behavior: a verified lock-on target with no valid "
-            .. "BATTLE_THEME preserves the private theme already playing "
-            .. "until the target is lost or the scene changes.",
+        "Selection gate: verified live Sora+0x74 target only. Selection runs "
+            .. "only while no fight theme is latched; graph/model-only "
+            .. "evidence is ignored for activation.",
+        "Target-change behavior: themed, differently themed, unthemed, and "
+            .. "missing lock-on targets all preserve the fight latch.",
+        "Native-end tracking: the exact active playback-list node is checked "
+            .. "at a bounded interval; no audio command is republished while "
+            .. "that node remains active.",
         "Maximum plausible theme-target HP: "
             .. tostring(SETTINGS.MAX_PLAUSIBLE_THEME_HP),
         "Presence hold ticks: " .. tostring(SETTINGS.PRESENCE_HOLD_TICKS),
@@ -7913,6 +7938,21 @@ local function buildReport()
         .. tostring(currentTheme ~= nil and currentTheme.name or "none")
     lines[#lines + 1] = "Playback active: "
         .. tostring(playbackActive)
+    lines[#lines + 1] = "Fight theme latched: "
+        .. tostring(SETTINGS._fightThemeLatched)
+    lines[#lines + 1] = string.format(
+        "Tracked playback node: 0x%X (seen=%s missing_checks=%u)",
+        SETTINGS._activePlaybackNode or 0,
+        tostring(SETTINGS._playbackNodeSeen),
+        SETTINGS._playbackNodeMissingChecks or 0
+    )
+    lines[#lines + 1] = string.format(
+        "Tracked playback signature: handle=0x%08X identity=0x%X",
+        SETTINGS._activePlaybackHandle or 0,
+        SETTINGS._activePlaybackIdentity or 0
+    )
+    lines[#lines + 1] = "Awaiting fresh encounter: "
+        .. tostring(SETTINGS._awaitingFreshEncounter)
     lines[#lines + 1] = "Pending theme: "
         .. tostring(pendingTheme ~= nil and pendingTheme.name or "none")
     lines[#lines + 1] = string.format(
@@ -7927,6 +7967,10 @@ local function buildReport()
     lines[#lines + 1] = string.format(
         "Private BGM fades/detaches completed: %u",
         totalPrivateStops
+    )
+    lines[#lines + 1] = string.format(
+        "Native fight-music ends observed: %u",
+        totalNativeFightEnds
     )
     lines[#lines + 1] = string.format(
         "Cached native audio bytes: %u",
@@ -9376,18 +9420,64 @@ function SETTINGS._processGraph()
 end
 
 function SETTINGS._processNarrowTargets()
+    SETTINGS._currentTargetObject = 0
     if currentSora ~= 0 then
         local encoded = safeReadInt(
             currentSora + SORA_LOCK_ON_TARGET_OFFSET,
             true
         )
         if encoded ~= nil and encoded ~= 0 then
-            examineEntity(
-                resolveCompressedPointer(encoded),
-                "Sora+0x74"
-            )
+            local object = resolveCompressedPointer(encoded)
+            if plausibleRuntimeAddress(object) then
+                SETTINGS._currentTargetObject = object
+                examineEntity(object, "Sora+0x74")
+            end
         end
     end
+end
+
+function SETTINGS._resetPlaybackTracking()
+    SETTINGS._activePlaybackNode = 0
+    SETTINGS._activePlaybackHandle = 0
+    SETTINGS._activePlaybackIdentity = 0
+    SETTINGS._playbackNodeSeen = false
+    SETTINGS._playbackNodeMissingChecks = 0
+    SETTINGS._lastPlaybackCheckTick = -100000
+end
+
+function SETTINGS._findActivePlaybackNode(bgmId, requiredNode)
+    local node = safeReadLong(BGM_PLAYBACK_LIST_HEAD_RVA) or 0
+    local visited = 0
+    while plausibleRuntimeAddress(node)
+        and visited < SETTINGS.MAX_PLAYBACK_LIST_NODES
+    do
+        local slot = safeReadInt(node + 0x30, true)
+        local state = safeReadInt(node + 0x3C, true)
+        if slot == bgmId
+            and state == 0
+            and (
+                requiredNode == nil
+                or requiredNode == 0
+                or node == requiredNode
+            )
+        then
+            return node
+        end
+        node = safeReadLong(node + 8, true) or 0
+        visited = visited + 1
+    end
+    return 0
+end
+
+function SETTINGS._armFightPlaybackTracking(theme)
+    SETTINGS._fightThemeLatched = theme ~= nil
+    if SETTINGS._latchedTargetObject == 0 then
+        SETTINGS._latchedTargetObject =
+            SETTINGS._currentTargetObject or 0
+    end
+    SETTINGS._resetPlaybackTracking()
+    SETTINGS._lastPlaybackCheckTick =
+        tick - SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS
 end
 
 local function fixedStringBytes(capacity, value)
@@ -9639,6 +9729,8 @@ function SETTINGS._queueThemeFade(theme, reasonText)
 
     pendingTheme = theme
     pendingMode = "fade-detach"
+    SETTINGS._pendingFadeReason =
+        tostring(reasonText or "scene/native lifecycle ended")
     activeSwitchQueued = true
     ok, reason = writeIntChecked(
         dataRva + DATA_DISPATCH_STATUS_OFFSET,
@@ -9676,17 +9768,126 @@ function SETTINGS._queueThemeFade(theme, reasonText)
     ), true)
 end
 
+function SETTINGS._observeNativePlaybackLifecycle()
+    if not SETTINGS._fightThemeLatched
+        or not playbackActive
+        or currentTheme == nil
+        or pendingTheme ~= nil
+        or activeSwitchQueued
+        or SETTINGS._sceneChangedThisTick
+        or SETTINGS._forceFadeAfterSceneChange
+        or SETTINGS._nativeEndCleanupQueued
+    then
+        return
+    end
+    if tick - SETTINGS._lastPlaybackCheckTick
+        < SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS
+    then
+        return
+    end
+    SETTINGS._lastPlaybackCheckTick = tick
+
+    if not SETTINGS._playbackNodeSeen then
+        local node =
+            SETTINGS._findActivePlaybackNode(currentTheme.bgmId, 0)
+        if node ~= 0 then
+            local handle = safeReadInt(node + 0x18, true)
+            local identity = safeReadLong(node + 0x20, true)
+            if handle ~= nil and identity ~= nil then
+                SETTINGS._activePlaybackNode = node
+                SETTINGS._activePlaybackHandle = handle
+                SETTINGS._activePlaybackIdentity = identity
+                SETTINGS._playbackNodeSeen = true
+                SETTINGS._playbackNodeMissingChecks = 0
+                addTimeline(string.format(
+                    "FIGHT THEME LATCH CONFIRMED tick=%u seconds=%.3f "
+                        .. "enemy=%s slot=%u playback_node=0x%X "
+                        .. "handle=0x%08X identity=0x%X",
+                    tick,
+                    tick / 60,
+                    currentTheme.name,
+                    currentTheme.bgmId,
+                    node,
+                    handle,
+                    identity
+                ), true)
+            end
+        end
+        return
+    end
+
+    local exactNode = SETTINGS._findActivePlaybackNode(
+        currentTheme.bgmId,
+        SETTINGS._activePlaybackNode
+    )
+    local exactHandle = exactNode ~= 0
+        and safeReadInt(exactNode + 0x18, true) or nil
+    local exactIdentity = exactNode ~= 0
+        and safeReadLong(exactNode + 0x20, true) or nil
+    if exactNode == SETTINGS._activePlaybackNode
+        and exactHandle == SETTINGS._activePlaybackHandle
+        and exactIdentity == SETTINGS._activePlaybackIdentity
+    then
+        SETTINGS._playbackNodeMissingChecks = 0
+        return
+    end
+
+    SETTINGS._playbackNodeMissingChecks =
+        SETTINGS._playbackNodeMissingChecks + 1
+    if SETTINGS._playbackNodeMissingChecks
+        < SETTINGS.PLAYBACK_END_CONFIRM_CHECKS
+    then
+        return
+    end
+
+    local endedTheme = currentTheme
+    local endedNode = SETTINGS._activePlaybackNode
+    totalNativeFightEnds = totalNativeFightEnds + 1
+    SETTINGS._awaitingFreshEncounter = true
+    SETTINGS._releaseTargetObject =
+        SETTINGS._currentTargetObject ~= 0
+            and SETTINGS._currentTargetObject
+            or SETTINGS._latchedTargetObject
+    playbackActive = false
+    currentTheme = nil
+    stopRequested = false
+    activeEnemy = nil
+    activeTheme = nil
+    SETTINGS._fightThemeLatched = false
+    SETTINGS._latchedTargetObject = 0
+    SETTINGS._nativeEndCleanupQueued = false
+    SETTINGS._pendingFadeReason = nil
+    SETTINGS._resetPlaybackTracking()
+    addTimeline(string.format(
+        "NATIVE FIGHT MUSIC END CONFIRMED tick=%u seconds=%.3f "
+            .. "enemy=%s slot=%u playback_node=0x%X "
+            .. "action=release-latch-no-audio-command",
+        tick,
+        tick / 60,
+        endedTheme.name,
+        endedTheme.bgmId,
+        endedNode
+    ), true)
+end
+
 function SETTINGS._selectActiveThemeEvidence()
     local best = nil
     for _, item in pairs(evidence) do
-        if tick - item.tick <= SETTINGS.PRESENCE_HOLD_TICKS
+        if item.tick == tick
             and item.profile.available
             and (
                 best == nil
-                or item.profile.priority > best.profile.priority
+                or item.tick > best.tick
                 or (
-                    item.profile.priority == best.profile.priority
-                    and item.profile.name < best.profile.name
+                    item.tick == best.tick
+                    and (
+                        item.profile.priority > best.profile.priority
+                        or (
+                            item.profile.priority
+                                == best.profile.priority
+                            and item.profile.name < best.profile.name
+                        )
+                    )
                 )
             )
         then
@@ -9715,7 +9916,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.25 unreachable diagnostic fade/detach safeguard"
+                "v4.4.27 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -9735,7 +9936,7 @@ function SETTINGS._updatePresenceAndRoute()
         if activeEnemy ~= selected.profile.name then
             addTimeline(string.format(
                 "SCAN MATCH CONFIRMED tick=%u seconds=%.3f enemy=%s "
-                    .. "match=%s; play-and-hold test selected",
+                    .. "match=%s; one-play diagnostic selected",
                 tick,
                 tick / 60,
                 selected.profile.name,
@@ -9769,125 +9970,103 @@ function SETTINGS._updatePresenceAndRoute()
         SETTINGS._queueThemeSwitch(activeTheme)
         return
     end
-    if selected == nil then
-        local preserveForUnthemedTarget =
-            not SETTINGS._sceneChangedThisTick
-            and not SETTINGS._forceFadeAfterSceneChange
-            and tick - SETTINGS._unthemedTargetTick
-                <= SETTINGS.PRESENCE_HOLD_TICKS
-            and (
-                playbackActive
-                or currentTheme ~= nil
-                or pendingTheme ~= nil
-            )
-        if preserveForUnthemedTarget then
-            if pendingMode ~= "fade-detach" then
-                stopRequested = false
-            end
-            if SETTINGS._lastPreservedTargetObject
-                ~= SETTINGS._unthemedTargetObject
-            then
-                SETTINGS._lastPreservedTargetObject =
-                    SETTINGS._unthemedTargetObject
-                addTimeline(string.format(
-                    "PRIVATE THEME PRESERVED tick=%u seconds=%.3f "
-                        .. "theme=%s target=0x%X "
-                        .. "reason=verified lock-on target has no theme",
-                    tick,
-                    tick / 60,
-                    currentTheme ~= nil
-                        and currentTheme.name
-                        or (
-                            pendingTheme ~= nil
-                                and pendingTheme.name
-                                or activeEnemy
-                                or "none"
-                        ),
-                    SETTINGS._unthemedTargetObject
-                ), true)
-            end
-            return
-        end
-        SETTINGS._lastPreservedTargetObject = 0
-        if activeEnemy ~= nil then
-            addTimeline(string.format(
-                "ROUTE DISARMED tick=%u seconds=%.3f enemy=%s "
-                    .. "reason=presence timeout or scene change",
-                tick,
-                tick / 60,
-                activeEnemy
-            ), true)
-        end
-        if pendingMode ~= "fade-detach"
-            and (
-                playbackActive
-                or currentTheme ~= nil
-                or pendingTheme ~= nil
-            )
-        then
-            stopRequested = true
-        end
+    -- A scene boundary is the only controller-originated release. It wins
+    -- over target evidence from the new room so the previous fight cannot
+    -- switch directly into a new theme.
+    if SETTINGS._sceneChangedThisTick
+        or SETTINGS._forceFadeAfterSceneChange
+    then
+        SETTINGS._awaitingFreshEncounter = false
+        SETTINGS._releaseTargetObject = 0
         activeEnemy = nil
         activeTheme = nil
-        if stopRequested and pendingTheme == nil then
-            if currentTheme ~= nil then
-                SETTINGS._queueThemeFade(
-                    currentTheme,
-                    "presence timeout or scene change"
-                )
-            else
-                stopRequested = false
-                playbackActive = false
-            end
+        if pendingMode == "fade-detach" then
+            return
         end
-        return
-    end
-
-    SETTINGS._lastPreservedTargetObject = 0
-    SETTINGS._forceFadeAfterSceneChange = false
-    if pendingMode ~= "fade-detach" then
-        stopRequested = false
-    end
-    if activeEnemy ~= selected.profile.name then
-        activeEnemy = selected.profile.name
-        activeTheme = selected.profile
-        playbackActive = false
-        addTimeline(string.format(
-            "ROUTE ARMED tick=%u seconds=%.3f enemy=%s "
-                .. "file=%s runtime=%s priority=%d match=%s",
-            tick,
-            tick / 60,
-            activeEnemy,
-            activeTheme.filename,
-            activeTheme.runtimeName,
-            activeTheme.priority,
-            selected.source
-        ), true)
-    end
-
-    if currentTheme ~= nil
-        and currentTheme.name ~= activeTheme.name
-    then
-        stopRequested = true
-        if pendingTheme == nil then
+        if pendingTheme ~= nil or activeSwitchQueued then
+            return
+        end
+        if currentTheme ~= nil then
+            stopRequested = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "configured encounter theme changed"
+                "world/room scene changed"
             )
+            return
         end
+        stopRequested = false
+        playbackActive = false
+        SETTINGS._fightThemeLatched = false
+        SETTINGS._latchedTargetObject = 0
+        SETTINGS._forceFadeAfterSceneChange = false
+        SETTINGS._resetPlaybackTracking()
         return
     end
 
-    if enabled
-        and pendingTheme == nil
-        and (
-            not playbackActive
-            or currentTheme == nil
-            or currentTheme.name ~= activeTheme.name
-        )
-    then
-        SETTINGS._queueThemeSwitch(activeTheme)
+    -- After KH1 natively ends a fight song, do not let the same lingering
+    -- lock-on restart it during victory/death cleanup. A cleared lock-on or a
+    -- different target object is the fresh-encounter edge.
+    if SETTINGS._awaitingFreshEncounter then
+        local currentObject = SETTINGS._currentTargetObject or 0
+        if currentObject == 0
+            or (
+                SETTINGS._releaseTargetObject ~= 0
+                and currentObject ~= SETTINGS._releaseTargetObject
+            )
+        then
+            SETTINGS._awaitingFreshEncounter = false
+            SETTINGS._releaseTargetObject = 0
+            evidence = {}
+            addTimeline(string.format(
+                "FRESH ENCOUNTER GATE OPEN tick=%u seconds=%.3f "
+                    .. "target=0x%X",
+                tick,
+                tick / 60,
+                currentObject
+            ), true)
+            return
+        else
+            return
+        end
     end
+
+    -- Once initial playback has been chosen, target identity is irrelevant
+    -- until native playback ends. This is the fight latch.
+    if SETTINGS._fightThemeLatched
+        or currentTheme ~= nil
+        or pendingTheme ~= nil
+        or activeSwitchQueued
+    then
+        stopRequested = false
+        return
+    end
+
+    if selected == nil then
+        activeEnemy = nil
+        activeTheme = nil
+        return
+    end
+
+    activeEnemy = selected.profile.name
+    activeTheme = selected.profile
+    playbackActive = false
+    SETTINGS._fightThemeLatched = true
+    SETTINGS._latchedTargetObject = selected.object or 0
+    SETTINGS._nativeEndCleanupQueued = false
+    SETTINGS._resetPlaybackTracking()
+    addTimeline(string.format(
+        "FIGHT THEME LATCH ARMED tick=%u seconds=%.3f enemy=%s "
+            .. "target=0x%X file=%s runtime=%s slot=%u match=%s",
+        tick,
+        tick / 60,
+        activeEnemy,
+        SETTINGS._latchedTargetObject,
+        activeTheme.filename,
+        activeTheme.runtimeName,
+        activeTheme.bgmId,
+        selected.source
+    ), true)
+    SETTINGS._queueThemeSwitch(activeTheme)
 end
 
 -- =========================================================================
@@ -10137,6 +10316,9 @@ function SETTINGS._processDispatchCounter()
             pendingMode = nil
             activeSwitchQueued = false
             playbackActive = false
+            SETTINGS._fightThemeLatched = false
+            SETTINGS._latchedTargetObject = 0
+            SETTINGS._resetPlaybackTracking()
             addTimeline(string.format(
                 "CACHED RESOURCE MISSING tick=%u seconds=%.3f "
                     .. "enemy=%s; SAFE FRESH LOAD WILL BE QUEUED",
@@ -10289,9 +10471,21 @@ function SETTINGS._processDispatchCounter()
                 completed.detached = false
             end
         end
+        local sceneCleanup = SETTINGS._forceFadeAfterSceneChange
         currentTheme = nil
         playbackActive = false
         stopRequested = false
+        activeEnemy = nil
+        activeTheme = nil
+        SETTINGS._fightThemeLatched = false
+        SETTINGS._latchedTargetObject = 0
+        SETTINGS._nativeEndCleanupQueued = false
+        SETTINGS._pendingFadeReason = nil
+        SETTINGS._resetPlaybackTracking()
+        if sceneCleanup then
+            SETTINGS._awaitingFreshEncounter = false
+            SETTINGS._releaseTargetObject = 0
+        end
         SETTINGS._forceFadeAfterSceneChange = false
         pendingTheme = nil
         pendingMode = nil
@@ -10346,7 +10540,8 @@ function SETTINGS._processDispatchCounter()
         completed.detached = false
         completed.activations = (completed.activations or 0) + delta
         currentTheme = completed
-        playbackActive = activeEnemy == completed.name
+        playbackActive = true
+        SETTINGS._armFightPlaybackTracking(completed)
     end
     pendingTheme = nil
     pendingMode = nil
@@ -10567,6 +10762,19 @@ function SETTINGS._resetPrivateThemeState()
     pendingMode = nil
     activeSwitchQueued = false
     stopRequested = false
+    SETTINGS._fightThemeLatched = false
+    SETTINGS._latchedTargetObject = 0
+    SETTINGS._currentTargetObject = 0
+    SETTINGS._activePlaybackNode = 0
+    SETTINGS._activePlaybackHandle = 0
+    SETTINGS._activePlaybackIdentity = 0
+    SETTINGS._playbackNodeSeen = false
+    SETTINGS._playbackNodeMissingChecks = 0
+    SETTINGS._lastPlaybackCheckTick = -100000
+    SETTINGS._awaitingFreshEncounter = false
+    SETTINGS._releaseTargetObject = 0
+    SETTINGS._nativeEndCleanupQueued = false
+    SETTINGS._pendingFadeReason = nil
     SETTINGS._unthemedTargetTick = -100000
     SETTINGS._unthemedTargetObject = 0
     SETTINGS._lastPreservedTargetObject = 0
@@ -10588,6 +10796,7 @@ function SETTINGS._resetPrivateThemeState()
     SETTINGS._lastTargetNode = 0
     totalActiveSwitches = 0
     totalPrivateStops = 0
+    totalNativeFightEnds = 0
     totalCachedBytes = 0
     timelineRows = {}
     timelineCapped = false
@@ -10603,28 +10812,26 @@ end
 function SETTINGS._privateThemeInit()
     SETTINGS._resetPrivateThemeState()
     addStatus(
-        "A/B route: the first verified configured target opens, allocates, "
-            .. "copies, registers, and plays its real private SCD exactly "
-            .. "once.",
+        "Narrow route: private-theme identity reads only the verified current "
+            .. "Sora+0x74 target; broad graph/global discovery and accumulated "
+            .. "candidate sweeps remain unreachable.",
         false
     )
     addStatus(
-        "Playback isolation: registration is followed by exactly one native "
-            .. "stop of the selected BGM slot and exactly one private play. "
-            .. "Automatic fade/detach, replay, cache activation, additional "
-            .. "lifecycle commands, and freeing are disabled.",
+        "Fight latch: the first activated private theme owns the encounter. "
+            .. "Themed, differently themed, unthemed, and missing lock-on "
+            .. "targets cannot switch or cancel it.",
         false
     )
     addStatus(
-        "Test behavior: the original music on the selected slot should stop "
-            .. "before the private theme begins. After the play-complete "
-            .. "message, listen for at least 30 seconds and then fully exit "
-            .. "the game.",
+        "Native end: the latch releases only after KH1 removes the exact "
+            .. "private playback object through its stop/fade lifecycle, "
+            .. "or after a world/room scene change.",
         false
     )
     addStatus(
-        "Selection: highest internal music priority wins; equal priorities "
-            .. "use the enemy name as a stable tie-breaker.",
+        "Command guard: no audio command is republished while the latched "
+            .. "playback object remains active.",
         false
     )
     addStatus(
@@ -10664,9 +10871,24 @@ function SETTINGS._privateThemeInit()
         or type(SETTINGS.MAX_PLAUSIBLE_THEME_HP) ~= "number"
         or SETTINGS.MAX_PLAUSIBLE_THEME_HP < 1
         or SETTINGS.MAX_PLAUSIBLE_THEME_HP > MAX_HP_STORAGE_VALUE
+        or type(SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS) ~= "number"
+        or SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS < 1
+        or SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS > 60
+        or SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS
+            ~= math.floor(SETTINGS.PLAYBACK_CHECK_INTERVAL_TICKS)
+        or type(SETTINGS.PLAYBACK_END_CONFIRM_CHECKS) ~= "number"
+        or SETTINGS.PLAYBACK_END_CONFIRM_CHECKS < 1
+        or SETTINGS.PLAYBACK_END_CONFIRM_CHECKS > 10
+        or SETTINGS.PLAYBACK_END_CONFIRM_CHECKS
+            ~= math.floor(SETTINGS.PLAYBACK_END_CONFIRM_CHECKS)
+        or type(SETTINGS.MAX_PLAYBACK_LIST_NODES) ~= "number"
+        or SETTINGS.MAX_PLAYBACK_LIST_NODES < 1
+        or SETTINGS.MAX_PLAYBACK_LIST_NODES > 128
+        or SETTINGS.MAX_PLAYBACK_LIST_NODES
+            ~= math.floor(SETTINGS.MAX_PLAYBACK_LIST_NODES)
     then
         addStatus(
-            "DISABLED: private-theme target-gate settings are invalid.",
+            "DISABLED: private-theme target/latch settings are invalid.",
             true
         )
         saveReport()
@@ -10851,13 +11073,11 @@ function SETTINGS._privateThemeInit()
         true
     )
     addStatus(
-        "READY: narrow stats + private-theme play-and-hold A/B active. "
-            .. "Lock onto Leon "
-            .. "and wait for DIAGNOSTIC PRIVATE SCD PLAY COMPLETE, then "
-            .. "listen for at least 30 seconds. Leon's configured 999 HP "
-            .. "damage and speed values are active. Theme identification "
-            .. "uses only Sora+0x74. No automatic fade/detach will "
-            .. "occur. Use a full game restart instead of F1.",
+        "READY: narrow stats + fight-latched private themes active. "
+            .. "HP, damage, speed, and theme identification use only "
+            .. "Sora+0x74. Target changes cannot switch the fight song; KH1's "
+            .. "native playback end or a scene change releases the latch. "
+            .. "Use a full game restart instead of F1.",
         true
     )
     saveReport()
@@ -10927,6 +11147,7 @@ function SETTINGS._privateThemeFrame()
     end
     SETTINGS._processDispatchCounter()
     SETTINGS._processPrivateScdTransfer()
+    SETTINGS._observeNativePlaybackLifecycle()
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -10953,21 +11174,20 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.25 A/B boundary: preserve the proven narrow Sora+0x74 HP,
+    -- Strict v4.4.27 boundary: preserve the proven narrow Sora+0x74 HP,
     -- current-lock-on damage scaling, and current-lock-on speed architecture.
-    -- The private-theme module also accepts only Sora+0x74 evidence, then
-    -- performs one stop/play-and-hold sequence. Broad discovery/refresh,
-    -- global target probing, captured-hit telemetry, theme switching, replay,
-    -- fade, detach, and cache activation are bypassed.
+    -- The private-theme module also accepts only Sora+0x74 evidence. The first
+    -- theme is fight-latched until KH1 ends its exact playback object or the
+    -- scene changes. Broad discovery/refresh, global target probing, and
+    -- captured-hit telemetry remain bypassed.
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.25NarrowStatsThemePlayHoldAB] READY: Sora+0x74 HP, "
+        "[EnemyConfigV4.4.27FightLatchedNativeEnd] READY: Sora+0x74 HP, "
             .. "current-target damage, animation speed, movement speed, and "
-            .. "one private-theme stop/play-and-hold route are enabled. "
+            .. "fight-latched private themes are enabled. "
             .. "Graph discovery, global probing, accumulated candidate "
-            .. "refresh, captured-hit telemetry, switching, replay, fade, "
-            .. "and detach are inactive."
+            .. "refresh, and captured-hit telemetry remain inactive."
     )
 end
 
