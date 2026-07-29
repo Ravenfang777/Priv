@@ -1,18 +1,22 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_27_FightLatchedNativeEnd.lua
+-- File: KHFM_EnemyConfig_v4_4_28_FightLatchedStatsNativeEnd.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.27 NARROW STATS + FIGHT-LATCHED PRIVATE THEMES.
+-- v4.4.28 FIGHT-LATCHED NARROW STATS + PRIVATE THEMES.
 --
 -- Diagnostic boundary:
---   * Enemy HP and damage scaling activate only from the verified Sora+0x74
---     lock-on target.
+--   * Enemy HP, damage scaling, animation speed, and movement speed activate
+--     only after the verified Sora+0x74 lock-on target identifies that exact
+--     enemy object and stat page.
 --   * Broad graph discovery, global memory probing, and candidate refresh are
 --     bypassed at runtime.
---   * The native damage hook publishes at most one target multiplier: the
---     current Sora+0x74 target. Previously seen candidates are never swept.
+--   * Once verified, a bounded fight roster keeps that exact enemy's settings
+--     active while lock-on is lost or moved to another target.
+--   * Dead, despawned, scene-invalid, and natively ended fight records are
+--     released. The same lingering target cannot immediately rearm after the
+--     native fight-music end.
+--   * The native damage hook publishes only the bounded fight roster, with the
+--     current Sora+0x74 target prioritized. No discovery candidate is swept.
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
---   * Animation-speed and movement-speed processing run only for that same
---     current Sora+0x74 target. Previously seen candidates are never swept.
 --   * Private-theme identification also reads only that same Sora+0x74 target;
 --     its graph traversal, global lock-on probes, and candidate sweep are
 --     bypassed.
@@ -44,7 +48,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Narrow HP/damage/speed with fight-latched private themes"
+LUAGUI_DESC = "Fight-latched narrow HP/damage/speed and private themes"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -302,6 +306,11 @@ local ENEMY_SETTINGS = {
 
 local INTERNAL_CONFIG = {
     ENABLE = true,
+    -- The private-theme lifecycle increments this serial when KH1 natively
+    -- ends the exact latched fight playback. The stats module uses the edge to
+    -- release its bounded fight roster without issuing or polling audio.
+    STATS_FIGHT_RELEASE_SERIAL = 0,
+    STATS_FIGHT_RELEASE_OBJECT = 0,
     -- false keeps routine target, movement, damage, and theme telemetry out
     -- of F2 and the text timelines. Startup, warnings, and failures remain.
     -- Set true when a detailed diagnostic capture is specifically needed.
@@ -388,9 +397,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_27_Fight_Latched_Native_End_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_28_Fight_Latched_Stats_Native_End_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_27_Fight_Latched_Native_End_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_28_Fight_Latched_Stats_Native_End_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1140,7 +1149,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.27 keeps verified Sora+0x74 HP, damage, and speed tracking.
+        -- V4.4.28 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1333,6 +1342,10 @@ local GRAPH_RESCAN_INTERVAL_TICKS = 180
 local GRAPH_NODES_PER_TICK = 4
 local MAX_GRAPH_NODES = 1536
 local MAX_ENTITY_CANDIDATES = 192
+-- Only enemies explicitly verified through Sora+0x74 can enter this bounded
+-- roster. Eight simultaneous records are enough for normal KH1 encounters
+-- while remaining tiny compared with the removed 192-candidate refresh path.
+local MAX_FIGHT_LATCHED_STAT_TARGETS = 8
 local MAX_MODEL_REFERENCE_PROBES = 64
 local MAX_HP_STORAGE_VALUE = 2147483647
 local MAX_MULTIPLIER = 10.00
@@ -1390,6 +1403,15 @@ local globalScanOffset = 0
 local candidates = {}
 local candidateOrder = {}
 local candidateCount = 0
+local fightLatchedCandidates = {}
+local fightLatchedOrder = {}
+local fightLatchedCount = 0
+local fightLatchOverflowLogged = {}
+local lastStatsWorld = nil
+local lastStatsRoom = nil
+local lastFightReleaseSerial = 0
+local awaitingFreshStatsEncounter = false
+local releasedStatsTargetObject = 0
 -- Kept across discovery resets. The key is the resolved stat-page address.
 -- The engine can expose one stat page through several wrapper objects, so a
 -- wrapper change alone must not turn an already-applied maximum into a new
@@ -3061,6 +3083,72 @@ local function candidateObjectStillMatches(candidate)
     return resolveCompressedPointer(encodedStatPage) == candidate.statPage
 end
 
+local function latchCandidateForFight(candidate)
+    if candidate == nil
+        or candidate.profile == nil
+        or not candidate.confirmedCombatTarget
+        or candidate.profile.enabled == false
+        or candidate.hp == nil
+        or candidate.hp <= 0
+        or not candidateObjectStillMatches(candidate)
+    then
+        return false
+    end
+
+    local key = addressKey(candidate.statPage)
+    local existing = fightLatchedCandidates[key]
+    if existing == candidate then
+        return false
+    end
+    if existing ~= nil then
+        existing.fightStatsLatched = false
+        fightLatchedCandidates[key] = candidate
+        candidate.fightStatsLatched = true
+        candidate.movementLastObject = nil
+        candidate.movementLastX = nil
+        candidate.movementLastZ = nil
+        candidate.movementActiveKey = nil
+        return true
+    end
+
+    if fightLatchedCount >= MAX_FIGHT_LATCHED_STAT_TARGETS then
+        if not fightLatchOverflowLogged[key] then
+            fightLatchOverflowLogged[key] = true
+            record(string.format(
+                "FIGHT STATS ROSTER FULL tick=%d enemy=%s object=%s "
+                    .. "stat_page=%s limit=%u; target remains narrow-only",
+                tick,
+                candidate.profile.name,
+                pointerText(candidate.object),
+                pointerText(candidate.statPage),
+                MAX_FIGHT_LATCHED_STAT_TARGETS
+            ), true)
+        end
+        return false
+    end
+
+    fightLatchedCandidates[key] = candidate
+    fightLatchedOrder[#fightLatchedOrder + 1] = key
+    fightLatchedCount = fightLatchedCount + 1
+    candidate.fightStatsLatched = true
+    candidate.movementLastObject = nil
+    candidate.movementLastX = nil
+    candidate.movementLastZ = nil
+    candidate.movementActiveKey = nil
+    record(string.format(
+        "FIGHT STATS LATCHED tick=%d enemy=%s object=%s stat_page=%s "
+            .. "encoded=0x%08X roster=%u/%u",
+        tick,
+        candidate.profile.name,
+        pointerText(candidate.object),
+        pointerText(candidate.statPage),
+        candidate.encodedStatPage,
+        fightLatchedCount,
+        MAX_FIGHT_LATCHED_STAT_TARGETS
+    ), true)
+    return true
+end
+
 local function observeAndApplySafeAnimationSpeed(candidate)
     if candidate == nil
         or candidate.profile == nil
@@ -3389,6 +3477,97 @@ function SETTINGS._applySafeMovementSpeed(candidate)
     end
 end
 
+local function clearFightLatchedCandidates(reason)
+    local released = fightLatchedCount
+    for _, key in ipairs(fightLatchedOrder) do
+        local candidate = fightLatchedCandidates[key]
+        if candidate ~= nil then
+            candidate.fightStatsLatched = false
+            candidate.speedActiveKey = nil
+            candidate.movementActiveKey = nil
+            candidate.movementLastObject = nil
+            candidate.movementLastX = nil
+            candidate.movementLastZ = nil
+        end
+    end
+    fightLatchedCandidates = {}
+    fightLatchedOrder = {}
+    fightLatchedCount = 0
+    fightLatchOverflowLogged = {}
+    if released > 0 then
+        record(string.format(
+            "FIGHT STATS ROSTER RELEASED tick=%d count=%u reason=%s",
+            tick,
+            released,
+            tostring(reason or "encounter ended")
+        ), true)
+    end
+end
+
+local function refreshFightLatchedCandidates()
+    local kept = {}
+    local liveCount = 0
+    for _, key in ipairs(fightLatchedOrder) do
+        local candidate = fightLatchedCandidates[key]
+        local hp = nil
+        local maxHp = nil
+        if candidate ~= nil and candidateObjectStillMatches(candidate) then
+            hp = safeReadInt(
+                candidate.statPage + STAT_CURRENT_HP_OFFSET,
+                true
+            )
+            maxHp = safeReadInt(
+                candidate.statPage + STAT_MAX_HP_OFFSET,
+                true
+            )
+        end
+
+        local live = hp ~= nil and maxHp ~= nil
+            and hp > 0 and maxHp > 0 and hp <= maxHp
+            and maxHp <= MAX_HP_STORAGE_VALUE
+        if live then
+            candidate.hp = hp
+            candidate.maxHp = maxHp
+            if candidate.profile ~= nil
+                and candidate.profile.enabled ~= false
+                and (
+                    candidate.appliedMaxHp == nil
+                    or maxHp ~= candidate.appliedMaxHp
+                )
+            then
+                applyHealth(candidate, hp, maxHp)
+            end
+            observeAndApplySafeAnimationSpeed(candidate)
+            SETTINGS._applySafeMovementSpeed(candidate)
+            kept[#kept + 1] = key
+            liveCount = liveCount + 1
+        else
+            fightLatchedCandidates[key] = nil
+            if candidate ~= nil then
+                candidate.fightStatsLatched = false
+                candidate.speedActiveKey = nil
+                candidate.movementActiveKey = nil
+                candidate.movementLastObject = nil
+                candidate.movementLastX = nil
+                candidate.movementLastZ = nil
+                record(string.format(
+                    "FIGHT STATS TARGET RELEASED tick=%d enemy=%s "
+                        .. "object=%s stat_page=%s reason=%s",
+                    tick,
+                    candidate.profile ~= nil
+                        and candidate.profile.name or "unmapped",
+                    pointerText(candidate.object),
+                    pointerText(candidate.statPage),
+                    candidateObjectStillMatches(candidate)
+                        and "defeated" or "despawned"
+                ), false)
+            end
+        end
+    end
+    fightLatchedOrder = kept
+    fightLatchedCount = liveCount
+end
+
 local function updateSafeAnimationSpeeds()
     for _, key in ipairs(candidateOrder) do
         local candidate = candidates[key]
@@ -3473,10 +3652,36 @@ local function processPreHitLiveTarget()
     )
     if encodedTarget == nil or encodedTarget == 0 then
         lastPreHitTarget = 0
+        if awaitingFreshStatsEncounter then
+            awaitingFreshStatsEncounter = false
+            releasedStatsTargetObject = 0
+            record(
+                "FRESH STATS ENCOUNTER GATE OPEN tick="
+                    .. tostring(tick) .. " target=none",
+                false
+            )
+        end
         return nil
     end
 
     local target = resolveCompressedPointer(encodedTarget)
+    if awaitingFreshStatsEncounter then
+        if releasedStatsTargetObject == 0
+            or target ~= releasedStatsTargetObject
+        then
+            awaitingFreshStatsEncounter = false
+            releasedStatsTargetObject = 0
+            record(string.format(
+                "FRESH STATS ENCOUNTER GATE OPEN tick=%d target=%s",
+                tick,
+                pointerText(target)
+            ), false)
+        else
+            lastPreHitTarget = 0
+            return nil
+        end
+    end
+
     local entity = readEntity(target)
     if entity == nil then
         lastPreHitTarget = 0
@@ -3500,15 +3705,10 @@ local function processPreHitLiveTarget()
         return nil
     end
 
-    -- Reacquiring this target starts movement scaling from a fresh position
-    -- baseline. This prevents displacement accumulated while lock-on was lost
-    -- from being interpreted as one live movement frame.
-    if firstFrameForTarget then
-        candidate.movementLastObject = nil
-        candidate.movementLastX = nil
-        candidate.movementLastZ = nil
-        candidate.movementActiveKey = nil
-    end
+    -- First verification adds this exact object/stat-page pair to the bounded
+    -- fight roster. It remains live without lock-on and receives a fresh
+    -- movement baseline only once, when the latch is armed.
+    latchCandidateForFight(candidate)
 
     if firstFrameForTarget then
         record(string.format(
@@ -3788,7 +3988,8 @@ local function processNarrowGlobalProbe()
     end
 end
 
-local function resetDiscovery(newSora)
+local function resetDiscovery(newSora, reason)
+    clearFightLatchedCandidates(reason or "discovery reset")
     currentSora = newSora or 0
     lastPreHitTarget = 0
     candidates = {}
@@ -3941,6 +4142,49 @@ local function candidateIsLive(candidate)
         and maxHp <= MAX_HP_STORAGE_VALUE
 end
 
+local function publishFightLatchedDamageCandidate(candidate, slot)
+    if not candidateIsLive(candidate) then
+        return nil
+    end
+    local key = addressKey(candidate.statPage)
+    if fightLatchedCandidates[key] ~= candidate then
+        return nil
+    end
+
+    local multiplier = profileDamageTakenMultiplier(candidate.profile)
+    if math.abs(multiplier - 1.0) <= 0.0001 then
+        return nil
+    end
+
+    local slotAddress = HOOK_TARGET_TABLE_RVA
+        + slot * HOOK_TARGET_SLOT_SIZE
+    local multiplierOK, multiplierReason = safeWriteFloat(
+        slotAddress + 4,
+        multiplier,
+        false
+    )
+    if not multiplierOK then
+        return false, "target multiplier failed: " .. multiplierReason
+    end
+
+    local idOK, idReason = safeWriteInt(
+        slotAddress,
+        candidate.encodedStatPage,
+        false
+    )
+    if not idOK then
+        return false, "target ID publish failed: " .. idReason
+    end
+
+    return true, string.format(
+        "%u:%08X:%.4f:%s",
+        slot,
+        candidate.encodedStatPage,
+        multiplier,
+        candidate.profile.name
+    )
+end
+
 local function updateDamageHookState()
     local pointerOK, pointerReason = safeWritePointer(
         HOOK_SORA_RVA,
@@ -3984,69 +4228,70 @@ local function updateDamageHookState()
         end
     end
 
-    -- Publish only the current Sora+0x74 target. Do not revisit accumulated
-    -- candidates: that recurring sweep was part of the proven stutter source.
-    local candidate = nil
+    -- Publish only the bounded fight roster. The current Sora+0x74 target is
+    -- prioritized, then already latched enemies fill the remaining native
+    -- hook slots. This never visits discovery candidates or graph sightings.
+    local currentCandidate = nil
+    local currentKey = nil
     if lastPreHitTarget ~= 0 then
         local entity = readEntity(lastPreHitTarget)
         if entity ~= nil then
-            candidate = candidates[addressKey(entity.statPage)]
+            currentKey = addressKey(entity.statPage)
+            currentCandidate = fightLatchedCandidates[currentKey]
         end
     end
 
-    local routeKey = ""
-    if candidateIsLive(candidate) then
-        local multiplier = profileDamageTakenMultiplier(candidate.profile)
-        if math.abs(multiplier - 1.0) > 0.0001 then
-            local multiplierOK, multiplierReason = safeWriteFloat(
-                HOOK_TARGET_TABLE_RVA + 4,
-                multiplier,
-                false
-            )
-            if not multiplierOK then
-                return false, "target multiplier failed: " .. multiplierReason
-            end
-
-            local idOK, idReason = safeWriteInt(
-                HOOK_TARGET_TABLE_RVA,
-                candidate.encodedStatPage,
-                false
-            )
-            if not idOK then
-                return false, "target ID publish failed: " .. idReason
-            end
-
-            routeKey = string.format(
-                "%08X:%.4f:%s",
-                candidate.encodedStatPage,
-                multiplier,
-                candidate.profile.name
-            )
+    local routeRows = {}
+    local published = 0
+    if currentCandidate ~= nil then
+        local publishedCurrent, currentResult =
+            publishFightLatchedDamageCandidate(currentCandidate, published)
+        if publishedCurrent == false then
+            return false, currentResult
+        elseif publishedCurrent == true then
+            routeRows[#routeRows + 1] = currentResult
+            published = published + 1
         end
     end
 
+    for _, key in ipairs(fightLatchedOrder) do
+        if published >= HOOK_TARGET_SLOT_COUNT then
+            break
+        end
+        if key ~= currentKey then
+            local candidate = fightLatchedCandidates[key]
+            local publishedCandidate, candidateResult =
+                publishFightLatchedDamageCandidate(candidate, published)
+            if publishedCandidate == false then
+                return false, candidateResult
+            elseif publishedCandidate == true then
+                routeRows[#routeRows + 1] = candidateResult
+                published = published + 1
+            end
+        end
+    end
+
+    local routeKey = table.concat(routeRows, "|")
     if routeKey ~= damageRouteLogKey then
         damageRouteLogKey = routeKey
         if routeKey == "" then
             record(
                 "DAMAGE ROUTE NATIVE tick=" .. tostring(tick)
-                    .. " current lock-on requests native damage",
+                    .. " no fight-latched enemy requests scaling",
                 false
             )
         else
             record(string.format(
-                "DAMAGE ROUTE ACTIVE tick=%d slot=0 enemy=%s "
-                    .. "encoded=0x%08X damage_taken_multiplier=%.3f "
-                    .. "source=Sora+0x74",
+                "DAMAGE ROUTE ACTIVE tick=%d slots=%u routes=%s "
+                    .. "source=bounded-fight-roster",
                 tick,
-                candidate.profile.name,
-                candidate.encodedStatPage,
-                profileDamageTakenMultiplier(candidate.profile)
+                published,
+                routeKey
             ), true)
         end
     end
 
-    lastOverflowCount = 0
+    lastOverflowCount = math.max(0, fightLatchedCount - published)
 
     return true
 end
@@ -4062,6 +4307,19 @@ function SETTINGS._combinedStatsInit()
     capturedDamageSequence = 0
     rejectedDamageEvents = {}
     lastPreHitTarget = 0
+    candidates = {}
+    candidateOrder = {}
+    candidateCount = 0
+    fightLatchedCandidates = {}
+    fightLatchedOrder = {}
+    fightLatchedCount = 0
+    fightLatchOverflowLogged = {}
+    lastStatsWorld = nil
+    lastStatsRoom = nil
+    lastFightReleaseSerial =
+        tonumber(SHARED.STATS_FIGHT_RELEASE_SERIAL) or 0
+    awaitingFreshStatsEncounter = false
+    releasedStatsTargetObject = 0
     reportLines = {}
     reportDirty = false
     reportUrgent = false
@@ -4074,7 +4332,7 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.27 narrow stats + fight-latched "
+        "KHFM Enemy Config v4.4.28 fight-latched stats + "
             .. "private themes / Stats report",
         false
     )
@@ -4192,7 +4450,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.27: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. HP, damage, and speed use only the current lock-on target.",
+        "V4.4.28: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -4204,9 +4462,10 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.27: configured animation-speed and X/Z movement-speed "
-            .. "processing is active only for the current verified Sora+0x74 "
-            .. "target. Previously seen candidates are never revisited.",
+        "V4.4.28: configured HP, damage, animation speed, and X/Z "
+            .. "movement speed remain active for verified fight-roster "
+            .. "targets after lock-on is lost or changed. Death, despawn, "
+            .. "scene change, or native fight-music end releases them.",
         true
     )
     record(
@@ -4238,11 +4497,34 @@ function SETTINGS._combinedStatsFrame()
     end
 
     local sora = safeReadLong(SORA_POINTER) or 0
-    if sora ~= currentSora then
-        resetDiscovery(sora)
+    local world = safeReadByte(WORLD_ADDRESS)
+    local room = safeReadByte(ROOM_ADDRESS)
+    local releaseSerial =
+        tonumber(SHARED.STATS_FIGHT_RELEASE_SERIAL) or 0
+    local sceneChanged =
+        world ~= lastStatsWorld or room ~= lastStatsRoom
+    if sora ~= currentSora or sceneChanged then
+        resetDiscovery(
+            sora,
+            sora ~= currentSora
+                and "Sora object changed"
+                or "world/room scene changed"
+        )
+        lastStatsWorld = world
+        lastStatsRoom = room
+        lastFightReleaseSerial = releaseSerial
+        awaitingFreshStatsEncounter = false
+        releasedStatsTargetObject = 0
+    elseif releaseSerial ~= lastFightReleaseSerial then
+        resetDiscovery(sora, "native fight music ended")
+        lastFightReleaseSerial = releaseSerial
+        awaitingFreshStatsEncounter = true
+        releasedStatsTargetObject =
+            tonumber(SHARED.STATS_FIGHT_RELEASE_OBJECT) or 0
     end
 
-    local narrowCandidate = processPreHitLiveTarget()
+    processPreHitLiveTarget()
+    refreshFightLatchedCandidates()
 
     local hookOK, hookReason = updateDamageHookState()
     if not hookOK then
@@ -4254,14 +4536,10 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.27 boundary: animation and X/Z movement scaling may touch
-    -- only the same current Sora+0x74 candidate used for HP and damage.
-    -- Global probing, graph traversal, accumulated candidate refresh, and
-    -- captured-hit telemetry remain unreachable.
-    if narrowCandidate ~= nil then
-        observeAndApplySafeAnimationSpeed(narrowCandidate)
-        SETTINGS._applySafeMovementSpeed(narrowCandidate)
-    end
+    -- Strict v4.4.28 boundary: recurring stats work may touch only the small
+    -- fight roster populated by verified Sora+0x74 targets. Global probing,
+    -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
+    -- remain unreachable.
 
     if reportDirty
         and tick - lastReportSaveTick
@@ -7253,7 +7531,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.27 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.28 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -7285,7 +7563,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_27_Fight_Latched_Native_End_Report.txt",
+        "KHFM_EnemyConfig_v4_4_28_Fight_Latched_Stats_Native_End_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7825,7 +8103,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.27FightLatchedNativeEnd] " .. message
+        "[EnemyConfigV4.4.28FightLatchedStatsNativeEnd] " .. message
     )
 end
 
@@ -7876,7 +8154,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.27 / narrow stats + fight-latched "
+        "KH1FM Enemy Config v4.4.28 / fight-latched stats + "
             .. "private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -7884,8 +8162,11 @@ local function buildReport()
             .. "does not react to lock-on loss. It releases only after KH1 "
             .. "removes that exact BGM playback object through its native "
             .. "stop/fade lifecycle, or after a scene change.",
-        "Stats: enemy HP, damage-taken, animation-speed, and movement-speed "
-            .. "process only the current Sora+0x74 target.",
+        "Stats: Sora+0x74 verification adds the exact enemy object/stat-page "
+            .. "pair to a bounded fight roster. HP, damage-taken, "
+            .. "animation-speed, and movement-speed remain active after "
+            .. "lock-on changes until death, despawn, scene change, or the "
+            .. "native fight-music end.",
         "Theme detection: only the current Sora+0x74 target is inspected; "
             .. "graph discovery, global target probing, and candidate sweeps "
             .. "are unreachable.",
@@ -9848,6 +10129,10 @@ function SETTINGS._observeNativePlaybackLifecycle()
         SETTINGS._currentTargetObject ~= 0
             and SETTINGS._currentTargetObject
             or SETTINGS._latchedTargetObject
+    SHARED.STATS_FIGHT_RELEASE_OBJECT =
+        SETTINGS._releaseTargetObject or 0
+    SHARED.STATS_FIGHT_RELEASE_SERIAL =
+        (tonumber(SHARED.STATS_FIGHT_RELEASE_SERIAL) or 0) + 1
     playbackActive = false
     currentTheme = nil
     stopRequested = false
@@ -9916,7 +10201,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.27 unreachable diagnostic fade/detach safeguard"
+                "v4.4.28 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11174,20 +11459,21 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.27 boundary: preserve the proven narrow Sora+0x74 HP,
-    -- current-lock-on damage scaling, and current-lock-on speed architecture.
-    -- The private-theme module also accepts only Sora+0x74 evidence. The first
-    -- theme is fight-latched until KH1 ends its exact playback object or the
-    -- scene changes. Broad discovery/refresh, global target probing, and
-    -- captured-hit telemetry remain bypassed.
+    -- Strict v4.4.28 boundary: Sora+0x74 is still the only enemy-verification
+    -- route. Verified targets enter a bounded fight roster so HP, damage, and
+    -- speed remain active without lock-on. The private-theme module also
+    -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
+    -- probing, and captured-hit telemetry remain bypassed.
+    INTERNAL_CONFIG.STATS_FIGHT_RELEASE_SERIAL = 0
+    INTERNAL_CONFIG.STATS_FIGHT_RELEASE_OBJECT = 0
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.27FightLatchedNativeEnd] READY: Sora+0x74 HP, "
-            .. "current-target damage, animation speed, movement speed, and "
-            .. "fight-latched private themes are enabled. "
-            .. "Graph discovery, global probing, accumulated candidate "
-            .. "refresh, and captured-hit telemetry remain inactive."
+        "[EnemyConfigV4.4.28FightLatchedStatsNativeEnd] READY: Sora+0x74 "
+            .. "verification, fight-latched HP, damage, animation speed, "
+            .. "movement speed, and fight-latched private themes are enabled. "
+            .. "Graph discovery, global probing, discovery-candidate refresh, "
+            .. "and captured-hit telemetry remain inactive."
     )
 end
 
