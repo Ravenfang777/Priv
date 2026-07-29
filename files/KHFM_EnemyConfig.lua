@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_24_NarrowLockOnHPDamageSpeedAB.lua
+-- File: KHFM_EnemyConfig_v4_4_25_NarrowStatsThemePlayHoldAB.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.24 NARROW LOCK-ON HP + DAMAGE + SPEED A/B.
+-- v4.4.25 NARROW STATS + PRIVATE THEME PLAY/HOLD A/B.
 --
 -- Diagnostic boundary:
 --   * Enemy HP and damage scaling activate only from the verified Sora+0x74
@@ -13,9 +13,13 @@
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
 --   * Animation-speed and movement-speed processing run only for that same
 --     current Sora+0x74 target. Previously seen candidates are never swept.
---   * The private-theme module is not constructed or initialized.
---   * No private-audio hook, SCD file access, allocation, copy, registration,
---     slot stop, playback, fade, detach, cache, or cleanup can run.
+--   * Private-theme identification also reads only that same Sora+0x74 target;
+--     its graph traversal, global lock-on probes, and candidate sweep are
+--     bypassed.
+--   * The first matched private SCD is allocated, copied, registered, preceded
+--     by one BGM-slot stop, played once, and held until the game exits.
+--   * Theme switching, replay, fade, detach, cache reuse, and cleanup are
+--     unreachable.
 --
 -- Verified component bases:
 --   Enemy Stats Manager v2.6
@@ -36,7 +40,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "A/B test: narrow lock-on HP, damage, and speed; discovery and audio disabled"
+LUAGUI_DESC = "A/B test: narrow HP/damage/speed plus one private theme play-and-hold"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -380,9 +384,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_24_Narrow_LockOn_HP_Damage_Speed_AB_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_25_Narrow_Stats_Theme_Play_Hold_AB_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_24_Narrow_LockOn_HP_Damage_Speed_AB_Inactive_Music_Report.txt",
+        "KHFM_EnemyConfig_v4_4_25_Narrow_Stats_Theme_Play_Hold_AB_Inactive_Music_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1132,7 +1136,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.24 keeps verified Sora+0x74 HP, damage, and speed tracking.
+        -- V4.4.25 keeps verified Sora+0x74 HP, damage, and speed tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -4066,7 +4070,8 @@ function SETTINGS._combinedStatsInit()
     damageRouteLogKey = nil
 
     record(
-        "KHFM Enemy Config v4.4.24 narrow lock-on HP + damage + speed A/B / Stats report",
+        "KHFM Enemy Config v4.4.25 narrow stats + private-theme "
+            .. "play-and-hold A/B / Stats report",
         false
     )
     record("Target: Steam Global 1.0.0.2 family / LuaBackendHook v1.9.1-hook", false)
@@ -4183,7 +4188,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.24 A/B: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. HP, damage, and speed use only the current lock-on target.",
+        "V4.4.25 A/B: graph discovery, global probing, candidate refresh, and captured-hit telemetry are fully bypassed. HP, damage, and speed use only the current lock-on target.",
         true
     )
     record(
@@ -4195,7 +4200,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.24 A/B: configured animation-speed and X/Z movement-speed "
+        "V4.4.25 A/B: configured animation-speed and X/Z movement-speed "
             .. "processing is active only for the current verified Sora+0x74 "
             .. "target. Previously seen candidates are never revisited.",
         true
@@ -4245,7 +4250,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.24 boundary: animation and X/Z movement scaling may touch
+    -- Strict v4.4.25 boundary: animation and X/Z movement scaling may touch
     -- only the same current Sora+0x74 candidate used for HP and damage.
     -- Global probing, graph traversal, accumulated candidate refresh, and
     -- captured-hit telemetry remain unreachable.
@@ -7244,11 +7249,12 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- Diagnostic v4.4.18 split: identify Leon directly by his verified
-    -- fingerprint, then allocate, copy, register, stop the selected BGM slot
-    -- once, and play one selected private SCD exactly once. Leave it active
-    -- until the game process exits. Replay, fade, detach, cache activation,
-    -- and freeing are unreachable. The enemy HP/stat subsystem is active.
+    -- Diagnostic v4.4.25 split: identify only the current Sora+0x74 target,
+    -- then allocate, copy, register, stop the selected BGM slot once, and play
+    -- one selected private SCD exactly once. Leave it active until the game
+    -- process exits. Graph/global target discovery, replay, fade, detach,
+    -- cache activation, and freeing are unreachable. The verified narrow
+    -- HP/damage/speed subsystem remains active.
     DIAGNOSTIC_PLAY_ONCE = true,
     DIAGNOSTIC_MAX_PLAYS = 1,
     DIAGNOSTIC_SKIP_PREPLAY_STOP = false,
@@ -7273,7 +7279,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_18_Stop_Then_Play_Hold_Stats_AB_Report.txt",
+        "KHFM_EnemyConfig_v4_4_25_Narrow_Stats_Theme_Play_Hold_AB_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -7796,7 +7802,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.18StopThenPlayHoldStatsAB] " .. message
+        "[EnemyConfigV4.4.25NarrowStatsThemePlayHoldAB] " .. message
     )
 end
 
@@ -7847,8 +7853,8 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.18 / stop-then-play-and-hold "
-            .. "+ stats A/B report",
+        "KH1FM Enemy Config v4.4.25 / narrow stats + private-theme "
+            .. "play-and-hold A/B report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first selected private SCD is opened, allocated, "
             .. "copied, and registered. Its configured BGM slot is stopped "
@@ -7857,7 +7863,10 @@ local function buildReport()
             .. "active until the game process exits. Replay, cache "
             .. "activation, fade/detach, and cleanup are unreachable.",
         "Stats: enemy HP, damage-taken, animation-speed, and movement-speed "
-            .. "processing are enabled from the editable enemy table.",
+            .. "process only the current Sora+0x74 target.",
+        "Theme detection: only the current Sora+0x74 target is inspected; "
+            .. "graph discovery, global target probing, and candidate sweeps "
+            .. "are unreachable.",
         "Native assets: no .bgm, .dat, or remastered/amusic path is replaced.",
         "Configured theme rows: "
             .. tostring(SETTINGS.CONFIGURED_THEME_COUNT),
@@ -9379,40 +9388,6 @@ function SETTINGS._processNarrowTargets()
             )
         end
     end
-
-    local globalDirect = safeReadLong(LOCK_ON_TARGET_POINTER)
-    if globalDirect ~= nil then
-        examineEntity(globalDirect, "lock-on global direct")
-    end
-    local globalEncoded = safeReadInt(LOCK_ON_TARGET_POINTER)
-    if globalEncoded ~= nil and globalEncoded >= 0x80000000 then
-        examineEntity(
-            resolveCompressedPointer(globalEncoded),
-            "lock-on global compressed"
-        )
-    end
-
-    for _ = 1, TARGET_GLOBAL_SLOTS_PER_TICK do
-        local address = TARGET_GLOBAL_SCAN_START + globalScanOffset
-        local direct = safeReadLong(address)
-        if direct ~= nil then
-            examineEntity(
-                direct,
-                string.format("module+0x%X direct", address)
-            )
-        end
-        local encoded = safeReadInt(address)
-        if encoded ~= nil and encoded >= 0x80000000 then
-            examineEntity(
-                resolveCompressedPointer(encoded),
-                string.format("module+0x%X compressed", address)
-            )
-        end
-        globalScanOffset = globalScanOffset + 4
-        if globalScanOffset >= TARGET_GLOBAL_SCAN_LENGTH then
-            globalScanOffset = 0
-        end
-    end
 end
 
 local function fixedStringBytes(capacity, value)
@@ -9740,7 +9715,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.18 unreachable diagnostic fade/detach safeguard"
+                "v4.4.25 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -10876,10 +10851,12 @@ function SETTINGS._privateThemeInit()
         true
     )
     addStatus(
-        "READY: stop-then-play-and-hold + stats A/B active. Lock onto Leon "
+        "READY: narrow stats + private-theme play-and-hold A/B active. "
+            .. "Lock onto Leon "
             .. "and wait for DIAGNOSTIC PRIVATE SCD PLAY COMPLETE, then "
             .. "listen for at least 30 seconds. Leon's configured 999 HP "
-            .. "and speed values are active. No automatic fade/detach will "
+            .. "damage and speed values are active. Theme identification "
+            .. "uses only Sora+0x74. No automatic fade/detach will "
             .. "occur. Use a full game restart instead of F1.",
         true
     )
@@ -10967,27 +10944,34 @@ end
 end
 
 local statsModule = buildStatsModule(INTERNAL_CONFIG)
+local privateThemeModule = buildPrivateThemeModule(
+    ENEMY_SETTINGS,
+    INTERNAL_CONFIG
+)
 
 function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.24 A/B boundary: construct and run only narrow Sora+0x74
-    -- HP, current-lock-on damage scaling, and current-lock-on speed.
-    -- Broad discovery/refresh, captured-hit telemetry, and audio are bypassed.
-    -- buildPrivateThemeModule() remains in the source for byte-comparison
-    -- against v4.4.18, but it is never called. Therefore no private-audio
-    -- native hook or resource lifecycle can initialize.
+    -- Strict v4.4.25 A/B boundary: preserve the proven narrow Sora+0x74 HP,
+    -- current-lock-on damage scaling, and current-lock-on speed architecture.
+    -- The private-theme module also accepts only Sora+0x74 evidence, then
+    -- performs one stop/play-and-hold sequence. Broad discovery/refresh,
+    -- global target probing, captured-hit telemetry, theme switching, replay,
+    -- fade, detach, and cache activation are bypassed.
     statsModule.init()
+    privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.24NarrowLockOnHPDamageSpeedAB] READY: Sora+0x74 HP, "
-            .. "current-target damage, animation speed, and movement speed "
-            .. "are enabled. Graph "
-            .. "discovery, global probing, accumulated candidate refresh, "
-            .. "captured-hit telemetry, and private themes are inactive."
+        "[EnemyConfigV4.4.25NarrowStatsThemePlayHoldAB] READY: Sora+0x74 HP, "
+            .. "current-target damage, animation speed, movement speed, and "
+            .. "one private-theme stop/play-and-hold route are enabled. "
+            .. "Graph discovery, global probing, accumulated candidate "
+            .. "refresh, captured-hit telemetry, switching, replay, fade, "
+            .. "and detach are inactive."
     )
 end
 
 function _OnFrame()
     statsModule.frame()
+    privateThemeModule.frame()
 end
