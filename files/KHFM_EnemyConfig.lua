@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_30_DamageBoundsInitFix.lua
+-- File: KHFM_EnemyConfig_v4_4_31_LIMITOrder.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.30 DAMAGE-BOUNDS INITIALIZATION FIX.
+-- v4.4.31 LIMIT POST-MULTIPLIER DAMAGE ORDER.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -17,8 +17,10 @@
 --   * The native damage hook publishes only the bounded fight roster, with the
 --     current Sora+0x74 target prioritized. No discovery candidate is swept.
 --   * Per-enemy damage is resolved inside that same native hook in this order:
---     native damage, DAMAGE_TAKEN multiplier, DAMAGE_FLOOR/DAMAGE_CEILING
---     clamp, then KH1's native HP subtraction.
+--     native damage, DAMAGE_TAKEN multiplier, Sora's discrete LIMIT tier,
+--     DAMAGE_FLOOR/DAMAGE_CEILING clamp, then native HP subtraction.
+--   * LIMIT v1.6 marks only Sora-owned hits. Party-member and enemy damage
+--     never consumes the marker and never receives Sora's LIMIT bonus.
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
 --   * Private-theme identification also reads only that same Sora+0x74 target;
 --     its graph traversal, global lock-on probes, and candidate sweep are
@@ -39,10 +41,11 @@
 --   SHA-256 d790746245d26159f3ee0e1060e33b2fa2de06941850a4ac724f598722884bac
 --   LuaBackendHook v1.9.1-hook / LuaEngine v5.0
 --
--- This is the only Lua file required by this package. Remove every older
--- EnemyConfig, Enemy Stats Manager, Multi-Enemy Battle Themes, BGM recorder,
--- and Wakka private-theme loader before installing it. The private SCD is a
--- binary audio asset and remains beside this Lua after OpenKH builds the mod.
+-- This remains the only EnemyConfig Lua. Install it beside
+-- ZZZ_KH1FM_LIMIT_System_v1_6_EnemyBoundsOrder.lua for LIMIT ordering.
+-- Remove every older EnemyConfig, Enemy Stats Manager, Multi-Enemy Battle
+-- Themes, BGM recorder, and older LIMIT core before installing the pair.
+-- Private SCD assets remain beside this Lua after OpenKH builds the mod.
 --
 -- The two proven native hook implementations remain isolated internally.
 -- A shared object+stat-page exclusion registry runs before either subsystem,
@@ -51,16 +54,16 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Fight-latched HP/damage bounds/speed and private themes"
+LUAGUI_DESC = "Fight-latched stats/themes with LIMIT after DAMAGE_TAKEN and before bounds"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
 --
 -- MAX_HP          Exact HP amount.
 -- DAMAGE_TAKEN    Incoming damage multiplier. 1.00 is native damage.
--- DAMAGE_FLOOR    Minimum damage from each hit after DAMAGE_TAKEN.
+-- DAMAGE_FLOOR    Minimum damage after DAMAGE_TAKEN and Sora's LIMIT tier.
 --                 nil or 0 means no minimum.
--- DAMAGE_CEILING  Maximum damage from each hit after DAMAGE_TAKEN.
+-- DAMAGE_CEILING  Maximum damage after DAMAGE_TAKEN and Sora's LIMIT tier.
 --                 nil means no maximum.
 --                 FLOOR cannot be greater than CEILING.
 -- ANIMATION_SPEED Per-animation animation + world-movement multipliers:
@@ -210,9 +213,9 @@ local ENEMY_SETTINGS = {
         MAX_HP = 999,
         DAMAGE_TAKEN = 2.00,
         DAMAGE_FLOOR = nil,
-        DAMAGE_CEILING = 1,
-        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 1.00, [0x07] = 1.00, [0x49] = 1.00, [0xCA] = 1.00, [0xCB] = 1.00, [0xCC] = 1.00, [0xD7] = 4.00, },
-        OVERALL_SPEED = .5,
+        DAMAGE_CEILING = nil,
+        ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
+        OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
     ["Guard Armor"] = { 
@@ -1187,7 +1190,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.30 keeps verified Sora+0x74 fight-roster tracking.
+        -- V4.4.31 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1291,6 +1294,32 @@ local HOOK_SLOT_MULTIPLIER_OFFSET = 4
 local HOOK_SLOT_CEILING_DELTA_OFFSET = 8
 local HOOK_SLOT_FLOOR_DELTA_OFFSET = 12
 
+-- LIMIT v1.6 owns a Sora-hit marker producer plus this post-multiplier helper.
+-- The enemy hook switches to this exact LIMIT-aware 100-byte code prefix when
+-- the sentinel and helper signature are live. Without LIMIT v1.6 it remains
+-- the standalone v4.4.30 damage-bounds hook.
+local LIMIT_POST_MULTIPLIER_HELPER_RVA = 0x3AFF6C
+local LIMIT_INTERFACE_SENTINEL_RVA = 0x3AFFC8
+local LIMIT_INTERFACE_SENTINEL = 0x4C494D36
+local LIMIT_HELPER_SIGNATURE = {
+    0x48, 0x3B, 0x35, 0x4D, 0x00, 0x00, 0x00, 0x75, 0x36,
+}
+local HOOK_LIMIT_CODE_BYTES = {
+    0x48, 0x89, 0xCE, 0x41, 0x89, 0xD6, 0x45, 0x85,
+    0xF6, 0x79, 0x57, 0x48, 0x3B, 0x0D, 0x52, 0x00,
+    0x00, 0x00, 0x74, 0x3C, 0x8B, 0x41, 0x6C, 0x4C,
+    0x8D, 0x05, 0x52, 0x00, 0x00, 0x00, 0x31, 0xC9,
+    0xB1, 0x04, 0x41, 0x3B, 0x00, 0x74, 0x19, 0x49,
+    0x83, 0xC0, 0x10, 0xFF, 0xC9, 0x75, 0xF3, 0x4C,
+    0x8D, 0x05, 0x6A, 0x0E, 0x00, 0x00, 0xF3, 0x41,
+    0x0F, 0x2A, 0xC6, 0xE9, 0xDC, 0x0D, 0x00, 0x00,
+    0xF3, 0x41, 0x0F, 0x2A, 0xC6, 0xF3, 0x41, 0x0F,
+    0x59, 0x40, 0x04, 0xE9, 0xCC, 0x0D, 0x00, 0x00,
+    0xF3, 0x41, 0x0F, 0x2A, 0xC6, 0xF3, 0x0F, 0x59,
+    0x05, 0x0F, 0x00, 0x00, 0x00, 0xF3, 0x44, 0x0F,
+    0x2C, 0xF0, 0xC3, 0x00,
+}
+
 -- Legacy v1.1-v1.5 hook image. It is recognized only so v2 can replace it
 -- safely when Lua scripts are reloaded without restarting the game.
 local V1_5_HOOK_CAVE_BYTES = {
@@ -1364,8 +1393,11 @@ local V4_4_28_HOOK_CAVE_BYTES = {
 -- 176-byte v3 hook image assembled for module+0x3AF150.
 -- Each configured enemy slot is:
 --   { encoded_stat_page, multiplier, negative_ceiling, negative_floor }
--- The multiplier is applied first. SSE max/min then clamps the signed negative
--- HP delta before KH1's native final-HP routine performs the subtraction.
+-- The multiplier is applied first. With LIMIT v1.6 live, the Sora-aware
+-- prefix also routes unconfigured targets through a native 1.0/default-bounds
+-- record, then jumps to the discrete-tier helper. That helper applies LIMIT,
+-- performs the same SSE max/min clamp, and returns. Standalone mode executes
+-- the original inline clamp below.
 local HOOK_CAVE_TEMPLATE = {
     0x48, 0x89, 0xCE, 0x41, 0x89, 0xD6, 0x45, 0x85,
     0xF6, 0x79, 0x57, 0x48, 0x3B, 0x0D, 0x52, 0x00,
@@ -1495,6 +1527,7 @@ local identifiedLogged = {}
 local motionObservedLogged = {}
 local lastOverflowCount = -1
 local damageRouteLogKey = nil
+local limitOrderHookActive = false
 
 -- =========================================================================
 -- LOGGING
@@ -4032,6 +4065,79 @@ local function validateExecutable()
     return true
 end
 
+local function damageHookCodeIsKnown(bytes)
+    return arraysEqual(
+        bytes,
+        HOOK_CAVE_TEMPLATE,
+        HOOK_CODE_PREFIX_SIZE
+    ) or arraysEqual(
+        bytes,
+        HOOK_LIMIT_CODE_BYTES,
+        HOOK_CODE_PREFIX_SIZE
+    )
+end
+
+local function limitOrderInterfaceAvailable()
+    return safeReadInt(LIMIT_INTERFACE_SENTINEL_RVA, false)
+            == LIMIT_INTERFACE_SENTINEL
+        and arraysEqual(
+            safeReadArray(
+                LIMIT_POST_MULTIPLIER_HELPER_RVA,
+                #LIMIT_HELPER_SIGNATURE,
+                false
+            ),
+            LIMIT_HELPER_SIGNATURE
+        )
+end
+
+local function syncLimitDamageOrderHook()
+    local actual = safeReadArray(
+        HOOK_CAVE_RVA,
+        HOOK_CODE_PREFIX_SIZE,
+        false
+    )
+    if actual == nil then
+        return false, "damage-order hook prefix could not be read"
+    end
+
+    local wantsLimitOrder = limitOrderInterfaceAvailable()
+    local isBaseline = arraysEqual(
+        actual,
+        HOOK_CAVE_TEMPLATE,
+        HOOK_CODE_PREFIX_SIZE
+    )
+    local isLimitOrder = arraysEqual(
+        actual,
+        HOOK_LIMIT_CODE_BYTES,
+        HOOK_CODE_PREFIX_SIZE
+    )
+    if not isBaseline and not isLimitOrder then
+        return false, "damage-order hook prefix contains unknown bytes"
+    end
+
+    if wantsLimitOrder and isBaseline then
+        local ok, reason = safeWriteArray(
+            HOOK_CAVE_RVA,
+            HOOK_LIMIT_CODE_BYTES,
+            false
+        )
+        if not ok then
+            return false, "LIMIT-order hook activation failed: " .. reason
+        end
+    elseif not wantsLimitOrder and isLimitOrder then
+        local ok, reason = safeWriteArray(
+            HOOK_CAVE_RVA,
+            HOOK_CAVE_TEMPLATE,
+            false
+        )
+        if not ok then
+            return false, "baseline damage hook restore failed: " .. reason
+        end
+    end
+    limitOrderHookActive = wantsLimitOrder
+    return true, wantsLimitOrder
+end
+
 local function installDamageHook()
     local callsite = safeReadArray(
         HOOK_CALLSITE_RVA,
@@ -4042,11 +4148,7 @@ local function installDamageHook()
         return false, "hook memory could not be read"
     end
 
-    local ownHook = arraysEqual(
-        cave,
-        HOOK_CAVE_TEMPLATE,
-        HOOK_CODE_PREFIX_SIZE
-    )
+    local ownHook = damageHookCodeIsKnown(cave)
     local legacyHook = arraysEqual(
         cave,
         V1_5_HOOK_CAVE_BYTES,
@@ -4099,7 +4201,12 @@ local function installDamageHook()
         end
     end
 
-    return true, ownHook
+    local syncOK, limitOrder = syncLimitDamageOrderHook()
+    if not syncOK then
+        return false, limitOrder
+    end
+
+    return true, (ownHook
         and "reused the existing v3 enemy-stat hook"
         or (
             previousStableHook
@@ -4113,7 +4220,10 @@ local function installDamageHook()
                     or "installed the v3 enemy-stat hook"
                 )
             )
-        )
+        ))
+        .. (limitOrder
+            and " with LIMIT post-multiplier ordering"
+            or " in standalone bounds mode")
 end
 
 local function ownHookStillInstalled()
@@ -4121,11 +4231,7 @@ local function ownHookStillInstalled()
         HOOK_CAVE_RVA,
         HOOK_CODE_PREFIX_SIZE
     )
-    return arraysEqual(
-        prefix,
-        HOOK_CAVE_TEMPLATE,
-        HOOK_CODE_PREFIX_SIZE
-    )
+    return damageHookCodeIsKnown(prefix)
 end
 
 local function candidateIsLive(candidate)
@@ -4353,9 +4459,10 @@ function SETTINGS._combinedStatsInit()
     motionObservedLogged = {}
     lastOverflowCount = -1
     damageRouteLogKey = nil
+    limitOrderHookActive = false
 
     record(
-        "KHFM Enemy Config v4.4.30 damage-bounds initialization fix + "
+        "KHFM Enemy Config v4.4.31 LIMIT-order integration + "
             .. "private themes / Stats report",
         false
     )
@@ -4473,7 +4580,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.30: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
+        "V4.4.31: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -4481,7 +4588,8 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "Per-hit damage order: native damage -> DAMAGE_TAKEN multiplier -> "
+        "Per-hit Sora damage order: native damage -> DAMAGE_TAKEN "
+            .. "multiplier -> discrete LIMIT tier -> "
             .. "DAMAGE_FLOOR/DAMAGE_CEILING clamp -> native HP subtraction.",
         true
     )
@@ -4490,7 +4598,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.30: configured HP, damage, animation speed, and X/Z "
+        "V4.4.31: configured HP, damage, animation speed, and X/Z "
             .. "movement speed remain active for verified fight-roster "
             .. "targets after lock-on is lost or changed. Death, despawn, "
             .. "scene change, or native fight-music end releases them.",
@@ -4513,6 +4621,20 @@ function SETTINGS._combinedStatsFrame()
     end
 
     tick = tick + 1
+
+    if not limitOrderHookActive or tick % 60 == 0 then
+        local orderOK, orderReason = syncLimitDamageOrderHook()
+        if not orderOK then
+            enabled = false
+            record(
+                "DISABLED: LIMIT damage-order synchronization failed: "
+                    .. tostring(orderReason) .. ".",
+                true
+            )
+            saveReport()
+            return
+        end
+    end
 
     if tick % 120 == 0 and not ownHookStillInstalled() then
         enabled = false
@@ -4563,7 +4685,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.30 boundary: recurring stats work may touch only the small
+    -- Strict v4.4.31 boundary: recurring stats work may touch only the small
     -- fight roster populated by verified Sora+0x74 targets. Global probing,
     -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
     -- remain unreachable.
@@ -7558,7 +7680,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.30 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.31 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -8130,7 +8252,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.30DamageBoundsInitFix] " .. message
+        "[EnemyConfigV4.4.31LIMITOrder] " .. message
     )
 end
 
@@ -8181,7 +8303,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.30 / damage-bounds init fix + "
+        "KH1FM Enemy Config v4.4.31 / LIMIT-order integration + "
             .. "private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -10228,7 +10350,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.30 unreachable diagnostic fade/detach safeguard"
+                "v4.4.31 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11486,7 +11608,7 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.30 boundary: Sora+0x74 is still the only enemy-verification
+    -- Strict v4.4.31 boundary: Sora+0x74 is still the only enemy-verification
     -- route. Verified targets enter a bounded fight roster so HP, damage, and
     -- speed remain active without lock-on. The private-theme module also
     -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
@@ -11496,7 +11618,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.30DamageBoundsInitFix] READY: Sora+0x74 "
+        "[EnemyConfigV4.4.31LIMITOrder] READY: Sora+0x74 "
             .. "verification, fight-latched HP, damage, animation speed, "
             .. "movement speed, and fight-latched private themes are enabled. "
             .. "Graph discovery, global probing, discovery-candidate refresh, "
