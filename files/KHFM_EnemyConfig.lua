@@ -248,7 +248,7 @@ local ENEMY_SETTINGS = {
     ["Ice Titan"] = { 
         MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
-        MAX_HP = 3000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = 1, DAMAGE_CEILING = 9999, 
+        MAX_HP = 3000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = 1, DAMAGE_CEILING = 999, 
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
