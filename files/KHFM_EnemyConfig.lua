@@ -252,7 +252,7 @@ local ENEMY_SETTINGS = {
         MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
         MAX_HP = 400000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, 
-        ANIMATION_SPEED = { [0x01] = 1.50, [0x02] = 1.50, [0xCA] = 1.40, [0xCB] = 1.40, [0xC8] = 1.40, [0xC9] = 1.40, [0xD7] = 1.30, [0x48] = 1.30, }, 
+        ANIMATION_SPEED = { [0x01] = 1.50, [0x02] = 1.50, [0xCA] = 1.40, [0xCB] = 1.40, [0xCF] = 1.40, [0xCE] = 1.40, [0xC8] = 1.40, [0xC9] = 1.40, [0xD5] = 1.50, [0xD7] = 1.30, [0xF1] = 1.40, [0xE6] = 1.50, [0xE7] = 1.50, [0x48] = 1.30, }, 
         OVERALL_SPEED = 1.2, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
     },
