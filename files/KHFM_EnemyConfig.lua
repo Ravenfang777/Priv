@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_31_LIMITOrder.lua
+-- File: KHFM_EnemyConfig_v4_4_32_NativeCeilingOverride.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.31 LIMIT POST-MULTIPLIER DAMAGE ORDER.
+-- v4.4.32 NATIVE DAMAGE-CEILING OVERRIDE.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -17,8 +17,9 @@
 --   * The native damage hook publishes only the bounded fight roster, with the
 --     current Sora+0x74 target prioritized. No discovery candidate is swept.
 --   * Per-enemy damage is resolved inside that same native hook in this order:
---     native damage, DAMAGE_TAKEN multiplier, Sora's discrete LIMIT tier,
---     DAMAGE_FLOOR/DAMAGE_CEILING clamp, then native HP subtraction.
+--     native formula/resistance (with the stock ceiling bypassed only when a
+--     custom DAMAGE_CEILING exists), DAMAGE_TAKEN multiplier, Sora's discrete
+--     LIMIT tier, DAMAGE_FLOOR/DAMAGE_CEILING clamp, then HP subtraction.
 --   * LIMIT v1.6 marks only Sora-owned hits. Party-member and enemy damage
 --     never consumes the marker and never receives Sora's LIMIT bonus.
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
@@ -54,7 +55,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Fight-latched stats/themes with LIMIT after DAMAGE_TAKEN and before bounds"
+LUAGUI_DESC = "Fight-latched stats/themes with a true native-ceiling replacement"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -64,7 +65,9 @@ LUAGUI_DESC = "Fight-latched stats/themes with LIMIT after DAMAGE_TAKEN and befo
 -- DAMAGE_FLOOR    Minimum damage after DAMAGE_TAKEN and Sora's LIMIT tier.
 --                 nil or 0 means no minimum.
 -- DAMAGE_CEILING  Maximum damage after DAMAGE_TAKEN and Sora's LIMIT tier.
---                 nil means no maximum.
+--                 A number replaces the enemy's stock native ceiling; this
+--                 permits ceilings above Sephiroth's native 25-damage cap.
+--                 nil preserves the stock native ceiling.
 --                 FLOOR cannot be greater than CEILING.
 -- ANIMATION_SPEED Per-animation animation + world-movement multipliers:
 --                 { [animation ID] = speed }
@@ -248,7 +251,7 @@ local ENEMY_SETTINGS = {
     ["Ice Titan"] = { 
         MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
-        MAX_HP = 3000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = 1, DAMAGE_CEILING = 999, 
+        MAX_HP = 7777, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, 
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
@@ -832,14 +835,7 @@ local INTERNAL_CONFIG = {
         ["Sephiroth"] = {
             model_codes = { "xa_ex_3000", "xa_ex_3008", "xa_ex_3009" },
             fingerprints = {},
-            context_bindings = {
-                {
-                    world = 11, room = 6, native_max_hp = 1800,
-                    max_hp_values = { 1800 },
-                    fingerprint =
-                        "000DCB78:00000140:00050000:000764D0:013E:001D",
-                },
-},
+            context_bindings = {},
         },
 
         -- ================================================================
@@ -1197,7 +1193,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.31 keeps verified Sora+0x74 fight-roster tracking.
+        -- V4.4.32 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1300,6 +1296,37 @@ local HOOK_TARGET_SLOT_COUNT = 4
 local HOOK_SLOT_MULTIPLIER_OFFSET = 4
 local HOOK_SLOT_CEILING_DELTA_OFFSET = 8
 local HOOK_SLOT_FLOOR_DELTA_OFFSET = 12
+
+-- KH1 normally applies the target's stock 16-bit ceiling at stat-page +0xC2
+-- inside the shared damage formula, before EnemyConfig and LIMIT can run.
+-- This call wrapper preserves that native path unless the exact target slot
+-- has a custom DAMAGE_CEILING. A configured ceiling skips only the stock
+-- +0xC2 clamp; the existing final-HP hook remains the sole custom clamp.
+local NATIVE_CEILING_CALLSITE_RVA = 0x2BFC48
+local NATIVE_CEILING_CALLSITE_ORIGINAL = {
+    0x8B, 0x4F, 0x6C,             -- mov ecx,[rdi+0x6C]
+    0xE8, 0x70, 0xB1, 0x0C, 0x00, -- call module+0x38ADC0
+}
+local NATIVE_CEILING_CALLSITE_PATCH = {
+    0xE8, 0xB3, 0xF5, 0x0E, 0x00, -- call module+0x3AF200
+    0x90, 0x90, 0x90,
+}
+local NATIVE_CEILING_CAVE_RVA = 0x3AF200
+local NATIVE_CEILING_CAVE_SIZE = 0x60
+local NATIVE_CEILING_CAVE_BYTES = {
+    0x8B, 0x47, 0x6C, 0x4C, 0x8D, 0x05, 0xB6, 0xFF,
+    0xFF, 0xFF, 0xB9, 0x04, 0x00, 0x00, 0x00, 0x41,
+    0x3B, 0x00, 0x74, 0x19, 0x49, 0x83, 0xC0, 0x10,
+    0xFF, 0xC9, 0x75, 0xF3, 0x48, 0x83, 0xEC, 0x28,
+    0x8B, 0x4F, 0x6C, 0xE8, 0x98, 0xBB, 0xFD, 0xFF,
+    0x48, 0x83, 0xC4, 0x28, 0xC3, 0x41, 0x81, 0x78,
+    0x08, 0x00, 0x00, 0x00, 0xCF, 0x74, 0xE5, 0x48,
+    0x83, 0xC4, 0x08, 0xE9, 0x3C, 0x0A, 0xF1, 0xFF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
 
 -- LIMIT v1.6 owns a Sora-hit marker producer plus this post-multiplier helper.
 -- The enemy hook switches to this exact LIMIT-aware 100-byte code prefix when
@@ -4241,6 +4268,89 @@ local function ownHookStillInstalled()
     return damageHookCodeIsKnown(prefix)
 end
 
+local function nativeCeilingOverrideStillInstalled()
+    return arraysEqual(
+            safeReadArray(
+                NATIVE_CEILING_CALLSITE_RVA,
+                #NATIVE_CEILING_CALLSITE_PATCH
+            ),
+            NATIVE_CEILING_CALLSITE_PATCH
+        )
+        and arraysEqual(
+            safeReadArray(
+                NATIVE_CEILING_CAVE_RVA,
+                NATIVE_CEILING_CAVE_SIZE
+            ),
+            NATIVE_CEILING_CAVE_BYTES
+        )
+end
+
+local function installNativeCeilingOverride()
+    local callsite = safeReadArray(
+        NATIVE_CEILING_CALLSITE_RVA,
+        #NATIVE_CEILING_CALLSITE_ORIGINAL
+    )
+    local cave = safeReadArray(
+        NATIVE_CEILING_CAVE_RVA,
+        NATIVE_CEILING_CAVE_SIZE
+    )
+    if callsite == nil or cave == nil then
+        return false, "native-ceiling hook memory could not be read"
+    end
+
+    local callIsNative = arraysEqual(
+        callsite,
+        NATIVE_CEILING_CALLSITE_ORIGINAL
+    )
+    local callIsOwned = arraysEqual(
+        callsite,
+        NATIVE_CEILING_CALLSITE_PATCH
+    )
+    local caveIsOwned = arraysEqual(cave, NATIVE_CEILING_CAVE_BYTES)
+    local caveIsEmpty = isZeroArray(cave)
+
+    if callIsOwned then
+        if not caveIsOwned then
+            return false,
+                "native-ceiling call exists but its cave has unknown bytes"
+        end
+        return true, "reused the verified native-ceiling override"
+    end
+    if not callIsNative then
+        return false,
+            "native-ceiling callsite is neither original nor compatible"
+    end
+    if not caveIsEmpty and not caveIsOwned then
+        return false,
+            "native-ceiling private cave belongs to another script"
+    end
+
+    if not caveIsOwned then
+        local caveOK, caveReason = safeWriteArray(
+            NATIVE_CEILING_CAVE_RVA,
+            NATIVE_CEILING_CAVE_BYTES,
+            false
+        )
+        if not caveOK then
+            return false,
+                "native-ceiling cave install failed: " .. caveReason
+        end
+    end
+
+    local callOK, callReason = safeWriteArray(
+        NATIVE_CEILING_CALLSITE_RVA,
+        NATIVE_CEILING_CALLSITE_PATCH,
+        false
+    )
+    if not callOK then
+        return false,
+            "native-ceiling call install failed: " .. callReason
+    end
+
+    return true,
+        "installed the per-target native-ceiling replacement"
+end
+
 local function candidateIsLive(candidate)
     if candidate == nil or candidate.profile == nil
         or not candidate.confirmedCombatTarget
@@ -4469,7 +4579,7 @@ function SETTINGS._combinedStatsInit()
     limitOrderHookActive = false
 
     record(
-        "KHFM Enemy Config v4.4.31 LIMIT-order integration + "
+        "KHFM Enemy Config v4.4.32 native-ceiling override + "
             .. "private themes / Stats report",
         false
     )
@@ -4570,11 +4680,19 @@ function SETTINGS._combinedStatsInit()
         return
     end
 
+    local ceilingOK, ceilingReason = installNativeCeilingOverride()
+    if not ceilingOK then
+        record("DISABLED: " .. ceilingReason .. ".", true)
+        saveReport()
+        return
+    end
+
     pcall(SetHertz, 60)
     enabled = true
 
     record(
         "READY: " .. hookReason
+            .. "; " .. ceilingReason
             .. "; narrow Sora+0x74 HP, damage, animation speed, and movement speed control is active.",
         true
     )
@@ -4587,7 +4705,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.31: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
+        "V4.4.32: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -4595,9 +4713,14 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "Per-hit Sora damage order: native damage -> DAMAGE_TAKEN "
+        "Per-hit Sora damage order: native formula/resistance -> "
+            .. "configured native-ceiling bypass -> DAMAGE_TAKEN "
             .. "multiplier -> discrete LIMIT tier -> "
             .. "DAMAGE_FLOOR/DAMAGE_CEILING clamp -> native HP subtraction.",
+        true
+    )
+    record(
+        "A numeric DAMAGE_CEILING replaces the target's stock +0xC2 cap; nil preserves the stock cap.",
         true
     )
     record(
@@ -4605,7 +4728,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.31: configured HP, damage, animation speed, and X/Z "
+        "V4.4.32: configured HP, damage, animation speed, and X/Z "
             .. "movement speed remain active for verified fight-roster "
             .. "targets after lock-on is lost or changed. Death, despawn, "
             .. "scene change, or native fight-music end releases them.",
@@ -4643,14 +4766,25 @@ function SETTINGS._combinedStatsFrame()
         end
     end
 
-    if tick % 120 == 0 and not ownHookStillInstalled() then
-        enabled = false
-        record(
-            "DISABLED: another script replaced the enemy-stat damage hook after initialization.",
-            true
-        )
-        saveReport()
-        return
+    if tick % 120 == 0 then
+        if not ownHookStillInstalled() then
+            enabled = false
+            record(
+                "DISABLED: another script replaced the enemy-stat damage hook after initialization.",
+                true
+            )
+            saveReport()
+            return
+        end
+        if not nativeCeilingOverrideStillInstalled() then
+            enabled = false
+            record(
+                "DISABLED: another script replaced the native-ceiling override after initialization.",
+                true
+            )
+            saveReport()
+            return
+        end
     end
 
     local sora = safeReadLong(SORA_POINTER) or 0
@@ -4692,7 +4826,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.31 boundary: recurring stats work may touch only the small
+    -- Strict v4.4.32 boundary: recurring stats work may touch only the small
     -- fight roster populated by verified Sora+0x74 targets. Global probing,
     -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
     -- remain unreachable.
@@ -4951,9 +5085,9 @@ local FRAME_RELOCATIONS = {
 }
 local COMBINED_CODE_SIZE = HOOK_CODE_SIZE + FRAME_CODE_SIZE
 
--- Enemy Stats Manager v2.x owns this verified executable cave.
+-- Enemy stats owns its final-HP hook plus the v4.4.32 native-cap bypass.
 local RESERVED_RANGES = {
-    { first = 0x3AF150, last = 0x3AF200 },
+    { first = 0x3AF150, last = 0x3AF300 },
 }
 
 local IMAGE_SCN_MEM_EXECUTE = 0x20000000
@@ -7687,7 +7821,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.31 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.32 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -8170,9 +8304,9 @@ local FRAME_CODE_PREFIX = {
     0x51, 0x48, 0x83, 0xEC, 0x40,
 }
 
--- Enemy Stats Manager v2.x owns this verified executable cave.
+-- Enemy stats owns its final-HP hook plus the v4.4.32 native-cap bypass.
 local RESERVED_RANGES = {
-    { first = 0x3AF150, last = 0x3AF200 },
+    { first = 0x3AF150, last = 0x3AF300 },
 }
 
 local IMAGE_SCN_MEM_EXECUTE = 0x20000000
@@ -8259,7 +8393,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.31LIMITOrder] " .. message
+        "[EnemyConfigV4.4.32NativeCeiling] " .. message
     )
 end
 
@@ -8310,7 +8444,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.31 / LIMIT-order integration + "
+        "KH1FM Enemy Config v4.4.32 / native-ceiling override + "
             .. "private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -10357,7 +10491,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.31 unreachable diagnostic fade/detach safeguard"
+                "v4.4.32 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11615,7 +11749,7 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.31 boundary: Sora+0x74 is still the only enemy-verification
+    -- Strict v4.4.32 boundary: Sora+0x74 is still the only enemy-verification
     -- route. Verified targets enter a bounded fight roster so HP, damage, and
     -- speed remain active without lock-on. The private-theme module also
     -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
@@ -11625,7 +11759,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.31LIMITOrder] READY: Sora+0x74 "
+        "[EnemyConfigV4.4.32NativeCeiling] READY: Sora+0x74 "
             .. "verification, fight-latched HP, damage, animation speed, "
             .. "movement speed, and fight-latched private themes are enabled. "
             .. "Graph discovery, global probing, discovery-candidate refresh, "
