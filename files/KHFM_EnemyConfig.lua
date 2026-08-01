@@ -253,7 +253,7 @@ local ENEMY_SETTINGS = {
     ["Sephiroth"] = { 
         MAX_HP = 400000, DAMAGE_TAKEN = 1.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, 
         ANIMATION_SPEED = {}, 
-        OVERALL_SPEED = nil, 
+        OVERALL_SPEED = 1.2, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
     },
     ["Sabor"] = { 
