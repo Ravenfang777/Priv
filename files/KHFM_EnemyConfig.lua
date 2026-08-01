@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_33_PerEnemyDamageDealt.lua
+-- File: KHFM_EnemyConfig_v4_4_34_SecondChancePreservation.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.33 PER-ENEMY DAMAGE-DEALT MULTIPLIERS.
+-- v4.4.34 SECOND CHANCE PRESERVATION.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -23,6 +23,9 @@
 --   * DAMAGE_DEALT is resolved from the actual attacker inside KH1's shared
 --     attack/spell formula. It does not depend on Sora's lock-on at hit time and
 --     does not overlap Equipment/LIMIT's Sora-owned outgoing formula wrapper.
+--   * After DAMAGE_DEALT, KH1's exact live Second Chance status test is
+--     repeated. A multiplied lethal hit leaves Sora at 1 HP when he began the
+--     hit above 1 HP; damage at 1 HP remains lethal exactly as in the game.
 --   * Legacy LIMIT v1.6 ordering remains recognized. Equipment/LIMIT v2.8's
 --     extended Sora formula uses a separate callsite and remains compatible.
 --   * Captured-hit telemetry is bypassed; it is not needed for damage scaling.
@@ -58,7 +61,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Fight-latched stats/themes with per-enemy damage dealt"
+LUAGUI_DESC = "Per-enemy damage dealt with Second Chance preservation"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -256,7 +259,7 @@ local ENEMY_SETTINGS = {
     ["Ice Titan"] = { 
         MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
-        MAX_HP = 400000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 10.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, 
+        MAX_HP = 400000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 7.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, 
         ANIMATION_SPEED = { [0x01] = 1.50, [0x02] = 1.50, [0xCA] = 1.40, [0xCB] = 1.40, [0xCF] = 1.40, [0xCE] = 1.40, [0xC8] = 1.40, [0xC9] = 1.40, [0xD1] = 2.50, [0xD2] = 1.50, [0xD3] = 1.40, [0xD4] = 1.50, [0xD5] = 1.50, [0xD7] = 1.30, [0xF1] = 1.40, [0xE6] = 1.50, [0xE7] = 1.50, [0xE8] = 1.50, [0xE9] = 1.50, [0x48] = 1.30, }, 
         OVERALL_SPEED = 1.2, 
         BATTLE_THEME = "KHFM_SephirothTheme.win32.scd",
@@ -1213,7 +1216,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.33 keeps verified Sora+0x74 fight-roster tracking.
+        -- V4.4.34 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1371,7 +1374,10 @@ SETTINGS._enemyDealtHook = {
         0x48, 0x8B, 0x5C, 0x24, 0x60, -- mov rbx,[rsp+60]
     },
     apply_patch = {
-        0xE8, 0x49, 0xF4, 0x0E, 0x00, -- call module+0x3AF280
+        0xE8, 0xC9, 0xE0, 0x0E, 0x00, -- call module+0x3ADF00
+    },
+    legacy_apply_patch = {
+        0xE8, 0x49, 0xF4, 0x0E, 0x00, -- v4.4.33 call module+0x3AF280
     },
     cave = 0x3AF260,
     cave_size = 0xA0,
@@ -1389,6 +1395,30 @@ SETTINGS._enemyDealtHook = {
     0x44, 0x24, 0x20, 0x8B, 0x44, 0x24, 0x20, 0x48, 0x83, 0xC4, 0x38, 0xC3, 0x00, 0x00, 0x00, 0x00,
     -- mutable attacker token at +0x8C, then four per-slot multipliers at +0x90
     0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x80, 0x3F,
+    },
+    -- The v4.4.33 multiplier body remains in the original 0xA0-byte image
+    -- for reversible ownership checks, but v4.4.34 calls this larger wrapper.
+    -- It applies the same exact-attacker multiplier, then repeats KH1's native
+    -- target+0x148/+0x184 bit-0x10 Second Chance test before returning damage.
+    second_chance_cave = 0x3ADF00,
+    second_chance_cave_size = 0x100,
+    second_chance_cave_bytes = {
+        0x48, 0x8B, 0x5C, 0x24, 0x68, 0x85, 0xC0, 0x0F, 0x8E, 0xA0, 0x00, 0x00, 0x00, 0x48, 0x83, 0xEC,
+        0x38, 0x89, 0x44, 0x24, 0x20, 0x8B, 0x0D, 0xD1, 0x13, 0x00, 0x00, 0x85, 0xC9, 0x0F, 0x84, 0x82,
+        0x00, 0x00, 0x00, 0xE8, 0x98, 0xCE, 0xFD, 0xFF, 0x48, 0x85, 0xC0, 0x74, 0x78, 0x8B, 0x48, 0x6C,
+        0x4C, 0x8D, 0x15, 0x89, 0x12, 0x00, 0x00, 0x4C, 0x8D, 0x1D, 0xB2, 0x13, 0x00, 0x00, 0x41, 0xB9,
+        0x04, 0x00, 0x00, 0x00, 0x41, 0x3B, 0x0A, 0x74, 0x0F, 0x49, 0x83, 0xC2, 0x10, 0x49, 0x83, 0xC3,
+        0x04, 0x41, 0xFF, 0xC9, 0x75, 0xEE, 0xEB, 0x4D, 0xF3, 0x0F, 0x2A, 0x44, 0x24, 0x20, 0xF3, 0x41,
+        0x0F, 0x59, 0x03, 0xF3, 0x0F, 0x2C, 0xC0, 0x89, 0x44, 0x24, 0x20, 0x8B, 0x8F, 0x48, 0x01, 0x00,
+        0x00, 0xE8, 0x4A, 0xCE, 0xFD, 0xFF, 0x48, 0x85, 0xC0, 0x74, 0x2A, 0xF6, 0x80, 0x84, 0x01, 0x00,
+        0x00, 0x10, 0x74, 0x21, 0x8B, 0x4F, 0x6C, 0xE8, 0x34, 0xCE, 0xFD, 0xFF, 0x48, 0x85, 0xC0, 0x74,
+        0x14, 0x8B, 0x48, 0x3C, 0x83, 0xF9, 0x01, 0x7E, 0x0C, 0x39, 0x4C, 0x24, 0x20, 0x7C, 0x06, 0xFF,
+        0xC9, 0x89, 0x4C, 0x24, 0x20, 0x8B, 0x44, 0x24, 0x20, 0x48, 0x83, 0xC4, 0x38, 0xC3, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     },
 }
 
@@ -4378,6 +4408,13 @@ function SETTINGS._enemyDealtHookStillInstalled()
             SETTINGS._enemyDealtHook.cave_bytes,
             SETTINGS._enemyDealtHook.cave_static_size
         )
+        and arraysEqual(
+            safeReadArray(
+                SETTINGS._enemyDealtHook.second_chance_cave,
+                SETTINGS._enemyDealtHook.second_chance_cave_size
+            ),
+            SETTINGS._enemyDealtHook.second_chance_cave_bytes
+        )
 end
 
 function SETTINGS._installEnemyDealtHook()
@@ -4393,7 +4430,12 @@ function SETTINGS._installEnemyDealtHook()
         SETTINGS._enemyDealtHook.cave,
         SETTINGS._enemyDealtHook.cave_size
     )
-    if capture == nil or apply == nil or cave == nil then
+    local secondChanceCave = safeReadArray(
+        SETTINGS._enemyDealtHook.second_chance_cave,
+        SETTINGS._enemyDealtHook.second_chance_cave_size
+    )
+    if capture == nil or apply == nil or cave == nil
+        or secondChanceCave == nil then
         return false, "per-enemy damage-dealt hook memory could not be read"
     end
 
@@ -4413,21 +4455,34 @@ function SETTINGS._installEnemyDealtHook()
         apply,
         SETTINGS._enemyDealtHook.apply_patch
     )
+    local applyIsLegacy = arraysEqual(
+        apply,
+        SETTINGS._enemyDealtHook.legacy_apply_patch
+    )
     local caveIsOwned = arraysEqual(
         cave,
         SETTINGS._enemyDealtHook.cave_bytes,
         SETTINGS._enemyDealtHook.cave_static_size
     )
     local caveIsEmpty = isZeroArray(cave)
+    local secondChanceCaveIsOwned = arraysEqual(
+        secondChanceCave,
+        SETTINGS._enemyDealtHook.second_chance_cave_bytes
+    )
+    local secondChanceCaveIsEmpty = isZeroArray(secondChanceCave)
+    local newInstall = captureIsOwned and applyIsOwned
+    local legacyInstall = captureIsOwned and applyIsLegacy
+    local nativeInstall = captureIsNative and applyIsNative
 
-    if captureIsOwned and applyIsOwned then
-        if not caveIsOwned then
+    if newInstall then
+        if not caveIsOwned or not secondChanceCaveIsOwned then
             return false,
-                "per-enemy damage-dealt branches exist but their cave has unknown bytes"
+                "Second-Chance damage branches exist but a private cave has unknown bytes"
         end
-        return true, "reused the verified per-enemy damage-dealt hook"
+        return true,
+            "reused the verified Second-Chance-safe per-enemy damage-dealt hook"
     end
-    if not captureIsNative or not applyIsNative then
+    if not legacyInstall and not nativeInstall then
         return false,
             "per-enemy damage-dealt sites are neither original nor compatible"
     end
@@ -4435,25 +4490,47 @@ function SETTINGS._installEnemyDealtHook()
         return false,
             "per-enemy damage-dealt private cave belongs to another script"
     end
+    if not secondChanceCaveIsEmpty and not secondChanceCaveIsOwned then
+        return false,
+            "Second Chance private cave belongs to another script"
+    end
 
-    local caveOK, caveReason = safeWriteArray(
-        SETTINGS._enemyDealtHook.cave,
-        SETTINGS._enemyDealtHook.cave_bytes,
-        false
-    )
-    if not caveOK then
-        return false,
-            "per-enemy damage-dealt cave install failed: " .. caveReason
+    if not caveIsOwned then
+        local caveOK, caveReason = safeWriteArray(
+            SETTINGS._enemyDealtHook.cave,
+            SETTINGS._enemyDealtHook.cave_bytes,
+            false
+        )
+        if not caveOK then
+            return false,
+                "per-enemy damage-dealt cave install failed: " .. caveReason
+        end
     end
-    local captureOK, captureReason = safeWriteArray(
-        SETTINGS._enemyDealtHook.capture_site,
-        SETTINGS._enemyDealtHook.capture_patch,
-        false
-    )
-    if not captureOK then
-        return false,
-            "per-enemy attacker capture install failed: " .. captureReason
+
+    if not secondChanceCaveIsOwned then
+        local scOK, scReason = safeWriteArray(
+            SETTINGS._enemyDealtHook.second_chance_cave,
+            SETTINGS._enemyDealtHook.second_chance_cave_bytes,
+            false
+        )
+        if not scOK then
+            return false,
+                "Second Chance cave install failed: " .. scReason
+        end
     end
+
+    if captureIsNative then
+        local captureOK, captureReason = safeWriteArray(
+            SETTINGS._enemyDealtHook.capture_site,
+            SETTINGS._enemyDealtHook.capture_patch,
+            false
+        )
+        if not captureOK then
+            return false,
+                "per-enemy attacker capture install failed: " .. captureReason
+        end
+    end
+
     local applyOK, applyReason = safeWriteArray(
         SETTINGS._enemyDealtHook.apply_site,
         SETTINGS._enemyDealtHook.apply_patch,
@@ -4464,7 +4541,9 @@ function SETTINGS._installEnemyDealtHook()
             "per-enemy damage-dealt apply install failed: " .. applyReason
     end
 
-    return true, "installed the exact-attacker per-enemy damage-dealt hook"
+    return true, legacyInstall
+        and "upgraded v4.4.33 to the Second-Chance-safe damage wrapper"
+        or "installed the exact-attacker Second-Chance-safe damage hook"
 end
 
 local function installNativeCeilingOverride()
@@ -4783,7 +4862,7 @@ function SETTINGS._combinedStatsInit()
     limitOrderHookActive = false
 
     record(
-        "KHFM Enemy Config v4.4.33 per-enemy damage dealt + "
+        "KHFM Enemy Config v4.4.34 Second Chance preservation + "
             .. "native-ceiling override + private themes / Stats report",
         false
     )
@@ -4917,7 +4996,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.33: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
+        "V4.4.34: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -4932,7 +5011,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "Per-enemy outgoing order: native attack/spell formula and resistance -> DAMAGE_DEALT -> finalized HP path. The actual attacker is resolved per hit; lock-on does not select the multiplier.",
+        "Per-enemy outgoing order: native attack/spell formula and resistance -> DAMAGE_DEALT -> native Second Chance recheck -> finalized HP path. The actual attacker is resolved per hit; lock-on does not select the multiplier.",
         true
     )
     record(
@@ -4944,7 +5023,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.33: configured HP, damage-taken/dealt, animation speed, and X/Z "
+        "V4.4.34: configured HP, damage-taken/dealt, animation speed, and X/Z "
             .. "movement speed remain active for verified fight-roster "
             .. "targets after lock-on is lost or changed. Death, despawn, "
             .. "scene change, or native fight-music end releases them.",
@@ -5051,7 +5130,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.33 boundary: recurring stats work may touch only the small
+    -- Strict v4.4.34 boundary: recurring stats work may touch only the small
     -- fight roster populated by verified Sora+0x74 targets. Global probing,
     -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
     -- remain unreachable.
@@ -5310,8 +5389,9 @@ local FRAME_RELOCATIONS = {
 }
 local COMBINED_CODE_SIZE = HOOK_CODE_SIZE + FRAME_CODE_SIZE
 
--- Enemy stats owns its final-HP hook plus the v4.4.33 native-cap bypass.
+-- Enemy stats owns its final-HP hook plus the v4.4.34 native-cap bypass.
 local RESERVED_RANGES = {
+    { first = 0x3ADF00, last = 0x3AE000 },
     { first = 0x3AF150, last = 0x3AF300 },
 }
 
@@ -8046,7 +8126,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.33 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.34 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -8529,8 +8609,9 @@ local FRAME_CODE_PREFIX = {
     0x51, 0x48, 0x83, 0xEC, 0x40,
 }
 
--- Enemy stats owns its final-HP hook plus the v4.4.33 native-cap bypass.
+-- Enemy stats owns its final-HP hook plus the v4.4.34 native-cap bypass.
 local RESERVED_RANGES = {
+    { first = 0x3ADF00, last = 0x3AE000 },
     { first = 0x3AF150, last = 0x3AF300 },
 }
 
@@ -8618,7 +8699,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.33PerEnemyDamageDealt] " .. message
+        "[EnemyConfigV4.4.34SecondChance] " .. message
     )
 end
 
@@ -8669,7 +8750,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.33 / per-enemy damage dealt + "
+        "KH1FM Enemy Config v4.4.34 / Second Chance preservation + "
             .. "native-ceiling override + private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -10716,7 +10797,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.33 unreachable diagnostic fade/detach safeguard"
+                "v4.4.34 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11974,7 +12055,7 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.33 boundary: Sora+0x74 is still the only enemy-verification
+    -- Strict v4.4.34 boundary: Sora+0x74 is still the only enemy-verification
     -- route. Verified targets enter a bounded fight roster so HP, damage, and
     -- speed remain active without lock-on. The private-theme module also
     -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
@@ -11984,7 +12065,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.33PerEnemyDamageDealt] READY: Sora+0x74 "
+        "[EnemyConfigV4.4.34SecondChance] READY: Sora+0x74 "
             .. "verification, fight-latched HP, damage-taken/dealt, animation speed, "
             .. "movement speed, and fight-latched private themes are enabled. "
             .. "Graph discovery, global probing, discovery-candidate refresh, "
