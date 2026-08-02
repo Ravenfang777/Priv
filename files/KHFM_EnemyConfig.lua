@@ -221,10 +221,10 @@ local ENEMY_SETTINGS = {
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
     },
     ["Leon"] = {
-        MAX_HP = 999,
-        DAMAGE_TAKEN = 2.00, DAMAGE_DEALT = 1.00,
-        DAMAGE_FLOOR = nil,
-        DAMAGE_CEILING = nil,
+        MAX_HP = 99999,
+        DAMAGE_TAKEN = 2.00, DAMAGE_DEALT = 3.00,
+        DAMAGE_FLOOR = 300,
+        DAMAGE_CEILING = 4999,
         ANIMATION_SPEED = { [0xD0] = 1.00, [0x01] = 4.00, [0x07] = 2.00, [0x49] = 4.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xD7] = 4.00, },
         OVERALL_SPEED = 1.2,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
@@ -240,24 +240,24 @@ local ENEMY_SETTINGS = {
     ["Queen's Heart Cards"] = { 
         MAX_HP = 1, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Cloud"] = { 
-        MAX_HP = 1500,
-        DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00,
-        DAMAGE_FLOOR = nil,
-        DAMAGE_CEILING = nil,
+        MAX_HP = 99999,
+        DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 3.00,
+        DAMAGE_FLOOR = 300,
+        DAMAGE_CEILING = 4999,
         ANIMATION_SPEED = {}, 
         OVERALL_SPEED = nil, 
         BATTLE_THEME = "KHFM_CloudTheme.win32.scd", 
     },
     ["Hercules"] = { 
-        MAX_HP = nil, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 120000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 2.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 4999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Cerberus"] = { 
-        MAX_HP = 1200, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 150000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 3.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Hades"] = { 
-        MAX_HP = 1500, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 150000, DAMAGE_TAKEN = 1.50, DAMAGE_DEALT = 4.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Rock Titan"] = { 
-        MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300000, DAMAGE_TAKEN = 0.50, DAMAGE_DEALT = 2.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Ice Titan"] = { 
-        MAX_HP = 4000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 1.00, DAMAGE_FLOOR = nil, DAMAGE_CEILING = nil, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
+        MAX_HP = 300000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 3.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, ANIMATION_SPEED = {}, OVERALL_SPEED = nil, BATTLE_THEME = nil },
     ["Sephiroth"] = { 
         MAX_HP = 400000, DAMAGE_TAKEN = 1.00, DAMAGE_DEALT = 7.00, DAMAGE_FLOOR = 300, DAMAGE_CEILING = 9999, 
         ANIMATION_SPEED = { [0x01] = 1.50, [0x02] = 1.50, [0xCA] = 1.40, [0xCB] = 1.40, [0xCF] = 1.40, [0xCE] = 1.40, [0xC8] = 1.40, [0xC9] = 1.40, [0xD1] = 2.50, [0xD2] = 1.50, [0xD3] = 1.40, [0xD4] = 1.50, [0xD5] = 1.50, [0xD7] = 1.30, [0xF1] = 1.40, [0xE6] = 1.50, [0xE7] = 1.50, [0xE8] = 1.50, [0xE9] = 1.50, [0x48] = 1.30, }, 
