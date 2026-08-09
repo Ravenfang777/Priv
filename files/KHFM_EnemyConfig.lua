@@ -226,7 +226,7 @@ local ENEMY_SETTINGS = {
         DAMAGE_TAKEN = 2.00, DAMAGE_DEALT = 3.00,
         DAMAGE_FLOOR = 300,
         DAMAGE_CEILING = 4999,
-        ANIMATION_SPEED = { [0x01] = 4.00, [0x07] = 2.00, [0x48] = 2.00, [0x49] = 2.00, [0xCA] = 1.50, [0xCB] = 2.00, [0xCC] = 2.00, [0xCD] = 2.00, [0xD5] = 1.50, [0xD7] = 1.50, [0xD0] = 2.00, },
+        ANIMATION_SPEED = { [0x01] = 4.00, [0x07] = 2.00, [0x48] = 2.00, [0x49] = 1.50, [0xCA] = 1.50, [0xCB] = 1.50, [0xCC] = 1.50, [0xCD] = 1.30, [0xCE] = 1.50, [0xD5] = 1.50, [0xD7] = 1.50, [0xD0] = 2.00, },
         OVERALL_SPEED = 1.0,
         BATTLE_THEME = "KHFM_LeonTheme.win32.scd",
     },
