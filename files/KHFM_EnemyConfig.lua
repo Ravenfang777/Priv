@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFM_EnemyConfig_v4_4_35_ThemeCaveRestoration.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.35 THEME CAVE RESTORATION + MANDATORY FINISHER TAIL INTERFACE.
+-- v4.4.35 THEME CAVE RESTORATION + COMPILE-SAFE FINISHER TAIL INTERFACE.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -1337,8 +1337,6 @@ local NATIVE_CEILING_CALLSITE_PATCH = {
 }
 local NATIVE_CEILING_CAVE_RVA = 0x3AF200
 local NATIVE_CEILING_CAVE_SIZE = 0x60
-local NATIVE_CEILING_CODE_SIZE = 0x40
-local NATIVE_CEILING_SHARED_TAIL_SIZE = 0x20
 local NATIVE_CEILING_CAVE_BYTES = {
     0x8B, 0x47, 0x6C, 0x4C, 0x8D, 0x05, 0xB6, 0xFF,
     0xFF, 0xFF, 0xB9, 0x04, 0x00, 0x00, 0x00, 0x41,
@@ -1356,30 +1354,32 @@ local NATIVE_CEILING_CAVE_BYTES = {
 
 -- The native-ceiling wrapper ends exactly at module+0x3AF23F.  The trailing
 -- 0x20 bytes were zero padding in v4.4.35 and are now an explicit, narrowly
--- shared executable interface for Mandatory Special Finishers v5.  The tail
--- is valid only when it holds the idle interface sentinel or the exact v5
+-- shared executable interface for Mandatory Special Finishers v5.1. The tail
+-- is valid only when it holds the idle interface sentinel or the exact v5.1
 -- image below; the action immediate at image offset +0x11 may be D8, D9, or
 -- DA. A legacy all-zero tail is accepted only long enough to upgrade it to
 -- the idle sentinel during initialization.
-local MANDATORY_FINISHER_IDLE_TAIL_BYTES = {
-    0x4D, 0x53, 0x46, 0x49, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+-- Keep the interface metadata on the existing SETTINGS table instead of
+-- declaring more buildStatsModule locals. LuaEngine's compiler permits at
+-- most 200 locals in one function, and this already-large module is close to
+-- that boundary before the interface is added.
+SETTINGS._mandatoryFinisherInterface = {
+    code_size = 0x40,
+    tail_size = 0x20,
+    action_offset = 0x11,
+    idle_tail = {
+        0x4D, 0x53, 0x46, 0x49, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    },
+    live_tail = {
+        0x66, 0x81, 0xFA, 0xCB, 0x00, 0x75, 0x0B, 0x48,
+        0x39, 0x0D, 0xFA, 0x8B, 0x18, 0x02, 0x75, 0x02,
+        0xB2, 0xD8, 0x48, 0x89, 0x5C, 0x24, 0x08, 0xE9,
+        0x69, 0x05, 0xEF, 0xFF, 0x4D, 0x53, 0x46, 0x35,
+    },
 }
-local MANDATORY_FINISHER_TAIL_BYTES = {
-    0x66, 0x81, 0xFA, 0xCB, 0x00, 0x75, 0x0B, 0x48,
-    0x39, 0x0D, 0xFA, 0x8B, 0x18, 0x02, 0x75, 0x02,
-    0xB2, 0xD8, 0x48, 0x89, 0x5C, 0x24, 0x08, 0xE9,
-    0x69, 0x05, 0xEF, 0xFF, 0x4D, 0x53, 0x46, 0x35,
-}
-local MANDATORY_FINISHER_ACTION_OFFSET = 0x11
-
-local NATIVE_CEILING_CODE_BYTES = {}
-for nativeCeilingByteIndex = 1, NATIVE_CEILING_CODE_SIZE do
-    NATIVE_CEILING_CODE_BYTES[nativeCeilingByteIndex] =
-        NATIVE_CEILING_CAVE_BYTES[nativeCeilingByteIndex]
-end
 
 -- The shared formula exposes the actual attacker before final HP subtraction.
 -- V4.4.35 keeps the attacker's multiplier separate from Equipment/LIMIT's
@@ -4434,16 +4434,17 @@ local function ownHookStillInstalled()
     return damageHookCodeIsKnown(prefix)
 end
 
-local function nativeCeilingSharedTailIsCompatible(cave)
+function SETTINGS._nativeCeilingSharedTailIsCompatible(cave)
     if cave == nil or #cave < NATIVE_CEILING_CAVE_SIZE then
         return false
     end
 
-    local tailStart = NATIVE_CEILING_CODE_SIZE + 1
+    local interface = SETTINGS._mandatoryFinisherInterface
+    local tailStart = interface.code_size + 1
     local tailIsIdle = true
-    for tailOffset = 0, NATIVE_CEILING_SHARED_TAIL_SIZE - 1 do
+    for tailOffset = 0, interface.tail_size - 1 do
         if cave[tailStart + tailOffset]
-            ~= MANDATORY_FINISHER_IDLE_TAIL_BYTES[tailOffset + 1]
+            ~= interface.idle_tail[tailOffset + 1]
         then
             tailIsIdle = false
             break
@@ -4454,7 +4455,7 @@ local function nativeCeilingSharedTailIsCompatible(cave)
     end
 
     local liveAction = cave[
-        tailStart + MANDATORY_FINISHER_ACTION_OFFSET
+        tailStart + interface.action_offset
     ]
     if liveAction ~= 0xD8 and liveAction ~= 0xD9
         and liveAction ~= 0xDA
@@ -4462,10 +4463,10 @@ local function nativeCeilingSharedTailIsCompatible(cave)
         return false
     end
 
-    for tailOffset = 0, NATIVE_CEILING_SHARED_TAIL_SIZE - 1 do
-        if tailOffset ~= MANDATORY_FINISHER_ACTION_OFFSET
+    for tailOffset = 0, interface.tail_size - 1 do
+        if tailOffset ~= interface.action_offset
             and cave[tailStart + tailOffset]
-                ~= MANDATORY_FINISHER_TAIL_BYTES[tailOffset + 1]
+                ~= interface.live_tail[tailOffset + 1]
         then
             return false
         end
@@ -4473,12 +4474,13 @@ local function nativeCeilingSharedTailIsCompatible(cave)
     return true
 end
 
-local function nativeCeilingSharedTailIsZero(cave)
+function SETTINGS._nativeCeilingSharedTailIsZero(cave)
     if cave == nil or #cave < NATIVE_CEILING_CAVE_SIZE then
         return false
     end
-    local tailStart = NATIVE_CEILING_CODE_SIZE + 1
-    for tailOffset = 0, NATIVE_CEILING_SHARED_TAIL_SIZE - 1 do
+    local interface = SETTINGS._mandatoryFinisherInterface
+    local tailStart = interface.code_size + 1
+    for tailOffset = 0, interface.tail_size - 1 do
         if cave[tailStart + tailOffset] ~= 0 then
             return false
         end
@@ -4486,13 +4488,14 @@ local function nativeCeilingSharedTailIsZero(cave)
     return true
 end
 
-local function nativeCeilingCaveIsCompatible(cave)
+function SETTINGS._nativeCeilingCaveIsCompatible(cave)
+    local interface = SETTINGS._mandatoryFinisherInterface
     return arraysEqual(
             cave,
-            NATIVE_CEILING_CODE_BYTES,
-            NATIVE_CEILING_CODE_SIZE
+            NATIVE_CEILING_CAVE_BYTES,
+            interface.code_size
         )
-        and nativeCeilingSharedTailIsCompatible(cave)
+        and SETTINGS._nativeCeilingSharedTailIsCompatible(cave)
 end
 
 local function nativeCeilingOverrideStillInstalled()
@@ -4503,7 +4506,7 @@ local function nativeCeilingOverrideStillInstalled()
             ),
             NATIVE_CEILING_CALLSITE_PATCH
         )
-        and nativeCeilingCaveIsCompatible(
+        and SETTINGS._nativeCeilingCaveIsCompatible(
             safeReadArray(
                 NATIVE_CEILING_CAVE_RVA,
                 NATIVE_CEILING_CAVE_SIZE
@@ -4757,14 +4760,15 @@ local function installNativeCeilingOverride()
         callsite,
         NATIVE_CEILING_CALLSITE_PATCH
     )
+    local interface = SETTINGS._mandatoryFinisherInterface
     local caveCodeIsOwned = arraysEqual(
         cave,
-        NATIVE_CEILING_CODE_BYTES,
-        NATIVE_CEILING_CODE_SIZE
+        NATIVE_CEILING_CAVE_BYTES,
+        interface.code_size
     )
-    local caveIsOwned = nativeCeilingCaveIsCompatible(cave)
+    local caveIsOwned = SETTINGS._nativeCeilingCaveIsCompatible(cave)
     local caveHasLegacyZeroTail = caveCodeIsOwned
-        and nativeCeilingSharedTailIsZero(cave)
+        and SETTINGS._nativeCeilingSharedTailIsZero(cave)
     local caveIsEmpty = isZeroArray(cave)
 
     if callIsOwned then
@@ -4774,8 +4778,8 @@ local function installNativeCeilingOverride()
         end
         if caveHasLegacyZeroTail then
             local tailOK, tailReason = safeWriteArray(
-                NATIVE_CEILING_CAVE_RVA + NATIVE_CEILING_CODE_SIZE,
-                MANDATORY_FINISHER_IDLE_TAIL_BYTES,
+                NATIVE_CEILING_CAVE_RVA + interface.code_size,
+                interface.idle_tail,
                 false
             )
             if not tailOK then
@@ -4799,7 +4803,7 @@ local function installNativeCeilingOverride()
     if caveIsEmpty then
         local caveOK, caveReason = safeWriteArray(
             NATIVE_CEILING_CAVE_RVA,
-            NATIVE_CEILING_CODE_BYTES,
+            NATIVE_CEILING_CAVE_BYTES,
             false
         )
         if not caveOK then
@@ -4810,8 +4814,8 @@ local function installNativeCeilingOverride()
 
     if caveIsEmpty or caveHasLegacyZeroTail then
         local tailOK, tailReason = safeWriteArray(
-            NATIVE_CEILING_CAVE_RVA + NATIVE_CEILING_CODE_SIZE,
-            MANDATORY_FINISHER_IDLE_TAIL_BYTES,
+            NATIVE_CEILING_CAVE_RVA + interface.code_size,
+            interface.idle_tail,
             false
         )
         if not tailOK then
@@ -5211,7 +5215,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "FINISHER INTERFACE: verified module+0x3AF240..0x3AF25F as the exact shared Mandatory Special Finishers v5 tail.",
+        "FINISHER INTERFACE: verified module+0x3AF240..0x3AF25F as the compile-safe Mandatory Special Finishers v5.1 tail.",
         true
     )
     record(
