@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
 -- File: KHFMEnemyconfigV6.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.36 ALL NATIVE BGM SLOT STOP.
+-- v4.4.37 DIRECT FALLBACK INTERFACE + ALL NATIVE BGM SLOT STOP.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -1340,7 +1340,9 @@ local NATIVE_CEILING_CALLSITE_PATCH = {
 }
 local NATIVE_CEILING_CAVE_RVA = 0x3AF200
 local NATIVE_CEILING_CAVE_SIZE = 0x60
-local NATIVE_CEILING_CAVE_BYTES = {
+-- Exact v4.4.36 native-ceiling image retained for a safe in-process upgrade.
+-- Its final 32 bytes were zero padding.
+SETTINGS._nativeCeilingV4436CaveBytes = {
     0x8B, 0x47, 0x6C, 0x4C, 0x8D, 0x05, 0xB6, 0xFF,
     0xFF, 0xFF, 0xB9, 0x04, 0x00, 0x00, 0x00, 0x41,
     0x3B, 0x00, 0x74, 0x19, 0x49, 0x83, 0xC0, 0x10,
@@ -1353,6 +1355,26 @@ local NATIVE_CEILING_CAVE_BYTES = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+-- V4.4.37 keeps the native-ceiling body byte-for-byte and uses only its
+-- verified +0x40..+0x5F padding tail for Equipment/LIMIT v4.2 helpers:
+--   +0x40 increments the established outgoing-hit sequence;
+--   +0x47 submits a rejected Gravity/Zantetsuken fallback through KH1's
+--         final HP adjuster, then returns zero to the rejected special event.
+local NATIVE_CEILING_CAVE_BYTES = {
+    0x8B, 0x47, 0x6C, 0x4C, 0x8D, 0x05, 0xB6, 0xFF,
+    0xFF, 0xFF, 0xB9, 0x04, 0x00, 0x00, 0x00, 0x41,
+    0x3B, 0x00, 0x74, 0x19, 0x49, 0x83, 0xC0, 0x10,
+    0xFF, 0xC9, 0x75, 0xF3, 0x48, 0x83, 0xEC, 0x28,
+    0x8B, 0x4F, 0x6C, 0xE8, 0x98, 0xBB, 0xFD, 0xFF,
+    0x48, 0x83, 0xC4, 0x28, 0xC3, 0x41, 0x81, 0x78,
+    0x08, 0x00, 0x00, 0x00, 0xCF, 0x74, 0xE5, 0x48,
+    0x83, 0xC4, 0x08, 0xE9, 0x3C, 0x0A, 0xF1, 0xFF,
+    0xFF, 0x05, 0xC2, 0x0C, 0x00, 0x00, 0xC3, 0x89,
+    0xC2, 0xF7, 0xDA, 0x48, 0x89, 0xF9, 0x48, 0x83,
+    0xEC, 0x28, 0xE8, 0xC9, 0x56, 0xEF, 0xFF, 0x48,
+    0x83, 0xC4, 0x28, 0x31, 0xC0, 0xC3, 0x00, 0x00,
 }
 
 -- The shared formula exposes the actual attacker before final HP subtraction.
@@ -4672,20 +4694,38 @@ local function installNativeCeilingOverride()
         NATIVE_CEILING_CALLSITE_PATCH
     )
     local caveIsOwned = arraysEqual(cave, NATIVE_CEILING_CAVE_BYTES)
+    local caveIsV4436 = arraysEqual(
+        cave,
+        SETTINGS._nativeCeilingV4436CaveBytes
+    )
     local caveIsEmpty = isZeroArray(cave)
 
     if callIsOwned then
-        if not caveIsOwned then
+        if not caveIsOwned and not caveIsV4436 then
             return false,
                 "native-ceiling call exists but its cave has unknown bytes"
         end
-        return true, "reused the verified native-ceiling override"
+        if caveIsOwned then
+            return true, "reused the verified native-ceiling override"
+        end
+        local upgradeOK, upgradeReason = safeWriteArray(
+            NATIVE_CEILING_CAVE_RVA,
+            NATIVE_CEILING_CAVE_BYTES,
+            false
+        )
+        if not upgradeOK then
+            return false,
+                "v4.4.36 native-ceiling helper-tail upgrade failed: "
+                    .. upgradeReason
+        end
+        return true,
+            "upgraded v4.4.36 with the verified direct-fallback interface"
     end
     if not callIsNative then
         return false,
             "native-ceiling callsite is neither original nor compatible"
     end
-    if not caveIsEmpty and not caveIsOwned then
+    if not caveIsEmpty and not caveIsOwned and not caveIsV4436 then
         return false,
             "native-ceiling private cave belongs to another script"
     end
@@ -4966,7 +5006,7 @@ function SETTINGS._combinedStatsInit()
     limitOrderHookActive = false
 
     record(
-        "KHFM Enemy Config v4.4.36 all-native-BGM-stop + "
+        "KHFM Enemy Config v4.4.37 direct-fallback-interface + all-native-BGM-stop + "
             .. "native-ceiling override + private themes / Stats report",
         false
     )
@@ -8811,7 +8851,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.36AllNativeBgmStop] " .. message
+        "[EnemyConfigV4.4.37DirectFallbackAllNativeBgmStop] " .. message
     )
 end
 
@@ -8862,7 +8902,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.36 / All native BGM stop + "
+        "KH1FM Enemy Config v4.4.37 / Direct fallback interface + all native BGM stop + "
             .. "native-ceiling override + private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -12194,7 +12234,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.36AllNativeBgmStop] INITIALIZED: "
+        "[EnemyConfigV4.4.37DirectFallbackAllNativeBgmStop] INITIALIZED: "
             .. "stats and private-theme modules completed their independent "
             .. "startup checks. Use their READY/DISABLED lines as the "
             .. "authoritative status."
