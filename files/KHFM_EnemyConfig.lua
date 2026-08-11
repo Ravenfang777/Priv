@@ -217,8 +217,8 @@ local ENEMY_SETTINGS = {
         DAMAGE_TAKEN = 3.00, DAMAGE_DEALT = 1.00,
         DAMAGE_FLOOR = 300,
         DAMAGE_CEILING = 9999,
-        ANIMATION_SPEED = { [0xDA] = 1.00 },
-        OVERALL_SPEED = 1.1,
+        ANIMATION_SPEED = {},
+        OVERALL_SPEED = nil,
         BATTLE_THEME = "KHFM_DarksideTheme.win32.scd",
     },
     ["Leon"] = {
