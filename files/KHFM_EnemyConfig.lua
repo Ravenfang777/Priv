@@ -1,7 +1,7 @@
 -- Kingdom Hearts Final Mix (Steam Global)
--- File: KHFM_EnemyConfig_v4_4_35_ThemeCaveRestoration.lua
+-- File: KHFMEnemyconfigV6.lua
 -- Single-file enemy HP, speed, and multi-private-theme controller
--- v4.4.35 THEME CAVE RESTORATION + COMPILE-SAFE FINISHER TAIL INTERFACE.
+-- v4.4.36 ALL NATIVE BGM SLOT STOP.
 --
 -- Diagnostic boundary:
 --   * Enemy HP, damage scaling, animation speed, and movement speed activate
@@ -62,7 +62,7 @@
 
 LUAGUI_NAME = "KHFM Enemy Config"
 LUAGUI_AUTH = "OpenAI"
-LUAGUI_DESC = "Per-enemy damage, Second Chance, and restored battle themes"
+LUAGUI_DESC = "Per-enemy damage and all-slot battle-theme replacement"
 
 -- ========================= USER SETTINGS =========================
 -- Edit the enemy rows below. nil means "leave unchanged."
@@ -432,7 +432,10 @@ local INTERNAL_CONFIG = {
     AUTO_SLOT1_BONUS_TICKS = 180,
     AUTO_SOURCE_WAIT_TICKS = 90,
     AUTO_SOURCE_PRE_ROLL_TICKS = 300,
-    MAX_TRACKED_BGM_SLOT = 3,
+    -- KH1's BGM route accepts IDs 0..15. Track the complete native range so
+    -- bosses such as Sephiroth cannot hide a second battle track above the
+    -- older 0..3 recorder window.
+    MAX_TRACKED_BGM_SLOT = 15,
 
     LOG_IDENTIFIED_ENEMIES = true,
     LOG_UNRESOLVED_MODELS = true,
@@ -440,9 +443,9 @@ local INTERNAL_CONFIG = {
     REPORT_SAVE_INTERVAL_TICKS = 600,
     MAX_TIMELINE_ROWS = 20000,
     STATS_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_35_Theme_Cave_Restoration_Stats_Report.txt",
+        "KHFM_EnemyConfig_v4_4_36_All_Native_BGM_Stop_Stats_Report.txt",
     MUSIC_REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_35_Theme_Cave_Restoration_Music_Route_Report.txt",
+        "KHFM_EnemyConfig_v4_4_36_All_Native_BGM_Stop_Music_Route_Report.txt",
 
     ENEMIES = {
         -- ================================================================
@@ -1217,7 +1220,7 @@ end
 
 local function buildStatsModule(SHARED)
     local SETTINGS = {
-        -- V4.4.35 keeps verified Sora+0x74 fight-roster tracking.
+        -- V4.4.36 keeps verified Sora+0x74 fight-roster tracking.
         -- Every broad discovery/refresh path remains unreachable.
         DIAGNOSTIC_NARROW_LOCKON_ONLY = true,
         DIAGNOSTIC_DISABLE_SPEED = false,
@@ -1352,37 +1355,8 @@ local NATIVE_CEILING_CAVE_BYTES = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 }
 
--- The native-ceiling wrapper ends exactly at module+0x3AF23F.  The trailing
--- 0x20 bytes were zero padding in v4.4.35 and are now an explicit, narrowly
--- shared executable interface for Mandatory Special Finishers v5.1. The tail
--- is valid only when it holds the idle interface sentinel or the exact v5.1
--- image below; the action immediate at image offset +0x11 may be D8, D9, or
--- DA. A legacy all-zero tail is accepted only long enough to upgrade it to
--- the idle sentinel during initialization.
--- Keep the interface metadata on the existing SETTINGS table instead of
--- declaring more buildStatsModule locals. LuaEngine's compiler permits at
--- most 200 locals in one function, and this already-large module is close to
--- that boundary before the interface is added.
-SETTINGS._mandatoryFinisherInterface = {
-    code_size = 0x40,
-    tail_size = 0x20,
-    action_offset = 0x11,
-    idle_tail = {
-        0x4D, 0x53, 0x46, 0x49, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    },
-    live_tail = {
-        0x66, 0x81, 0xFA, 0xCB, 0x00, 0x75, 0x0B, 0x48,
-        0x39, 0x0D, 0xFA, 0x8B, 0x18, 0x02, 0x75, 0x02,
-        0xB2, 0xD8, 0x48, 0x89, 0x5C, 0x24, 0x08, 0xE9,
-        0x69, 0x05, 0xEF, 0xFF, 0x4D, 0x53, 0x46, 0x35,
-    },
-}
-
 -- The shared formula exposes the actual attacker before final HP subtraction.
--- V4.4.35 keeps the attacker's multiplier separate from Equipment/LIMIT's
+-- V4.4.36 keeps the attacker's multiplier separate from Equipment/LIMIT's
 -- Sora-owned outgoing formula and applies it at two mutually exclusive points:
 --   * +0x2BFCD3 scales ordinary damage immediately before KH1's native Second
 --     Chance test, so the stock ability sees the multiplied damage.
@@ -4434,70 +4408,6 @@ local function ownHookStillInstalled()
     return damageHookCodeIsKnown(prefix)
 end
 
-function SETTINGS._nativeCeilingSharedTailIsCompatible(cave)
-    if cave == nil or #cave < NATIVE_CEILING_CAVE_SIZE then
-        return false
-    end
-
-    local interface = SETTINGS._mandatoryFinisherInterface
-    local tailStart = interface.code_size + 1
-    local tailIsIdle = true
-    for tailOffset = 0, interface.tail_size - 1 do
-        if cave[tailStart + tailOffset]
-            ~= interface.idle_tail[tailOffset + 1]
-        then
-            tailIsIdle = false
-            break
-        end
-    end
-    if tailIsIdle then
-        return true
-    end
-
-    local liveAction = cave[
-        tailStart + interface.action_offset
-    ]
-    if liveAction ~= 0xD8 and liveAction ~= 0xD9
-        and liveAction ~= 0xDA
-    then
-        return false
-    end
-
-    for tailOffset = 0, interface.tail_size - 1 do
-        if tailOffset ~= interface.action_offset
-            and cave[tailStart + tailOffset]
-                ~= interface.live_tail[tailOffset + 1]
-        then
-            return false
-        end
-    end
-    return true
-end
-
-function SETTINGS._nativeCeilingSharedTailIsZero(cave)
-    if cave == nil or #cave < NATIVE_CEILING_CAVE_SIZE then
-        return false
-    end
-    local interface = SETTINGS._mandatoryFinisherInterface
-    local tailStart = interface.code_size + 1
-    for tailOffset = 0, interface.tail_size - 1 do
-        if cave[tailStart + tailOffset] ~= 0 then
-            return false
-        end
-    end
-    return true
-end
-
-function SETTINGS._nativeCeilingCaveIsCompatible(cave)
-    local interface = SETTINGS._mandatoryFinisherInterface
-    return arraysEqual(
-            cave,
-            NATIVE_CEILING_CAVE_BYTES,
-            interface.code_size
-        )
-        and SETTINGS._nativeCeilingSharedTailIsCompatible(cave)
-end
-
 local function nativeCeilingOverrideStillInstalled()
     return arraysEqual(
             safeReadArray(
@@ -4506,11 +4416,12 @@ local function nativeCeilingOverrideStillInstalled()
             ),
             NATIVE_CEILING_CALLSITE_PATCH
         )
-        and SETTINGS._nativeCeilingCaveIsCompatible(
+        and arraysEqual(
             safeReadArray(
                 NATIVE_CEILING_CAVE_RVA,
                 NATIVE_CEILING_CAVE_SIZE
-            )
+            ),
+            NATIVE_CEILING_CAVE_BYTES
         )
 end
 
@@ -4760,34 +4671,13 @@ local function installNativeCeilingOverride()
         callsite,
         NATIVE_CEILING_CALLSITE_PATCH
     )
-    local interface = SETTINGS._mandatoryFinisherInterface
-    local caveCodeIsOwned = arraysEqual(
-        cave,
-        NATIVE_CEILING_CAVE_BYTES,
-        interface.code_size
-    )
-    local caveIsOwned = SETTINGS._nativeCeilingCaveIsCompatible(cave)
-    local caveHasLegacyZeroTail = caveCodeIsOwned
-        and SETTINGS._nativeCeilingSharedTailIsZero(cave)
+    local caveIsOwned = arraysEqual(cave, NATIVE_CEILING_CAVE_BYTES)
     local caveIsEmpty = isZeroArray(cave)
 
     if callIsOwned then
-        if not caveIsOwned and not caveHasLegacyZeroTail then
+        if not caveIsOwned then
             return false,
                 "native-ceiling call exists but its cave has unknown bytes"
-        end
-        if caveHasLegacyZeroTail then
-            local tailOK, tailReason = safeWriteArray(
-                NATIVE_CEILING_CAVE_RVA + interface.code_size,
-                interface.idle_tail,
-                false
-            )
-            if not tailOK then
-                return false,
-                    "mandatory-finisher tail upgrade failed: " .. tailReason
-            end
-            return true,
-                "upgraded the verified native-ceiling override with the finisher tail interface"
         end
         return true, "reused the verified native-ceiling override"
     end
@@ -4795,12 +4685,12 @@ local function installNativeCeilingOverride()
         return false,
             "native-ceiling callsite is neither original nor compatible"
     end
-    if not caveIsEmpty and not caveIsOwned and not caveHasLegacyZeroTail then
+    if not caveIsEmpty and not caveIsOwned then
         return false,
             "native-ceiling private cave belongs to another script"
     end
 
-    if caveIsEmpty then
+    if not caveIsOwned then
         local caveOK, caveReason = safeWriteArray(
             NATIVE_CEILING_CAVE_RVA,
             NATIVE_CEILING_CAVE_BYTES,
@@ -4809,19 +4699,6 @@ local function installNativeCeilingOverride()
         if not caveOK then
             return false,
                 "native-ceiling cave install failed: " .. caveReason
-        end
-    end
-
-    if caveIsEmpty or caveHasLegacyZeroTail then
-        local tailOK, tailReason = safeWriteArray(
-            NATIVE_CEILING_CAVE_RVA + interface.code_size,
-            interface.idle_tail,
-            false
-        )
-        if not tailOK then
-            return false,
-                "mandatory-finisher tail interface install failed: "
-                    .. tailReason
         end
     end
 
@@ -5089,7 +4966,7 @@ function SETTINGS._combinedStatsInit()
     limitOrderHookActive = false
 
     record(
-        "KHFM Enemy Config v4.4.35 theme-cave restoration + "
+        "KHFM Enemy Config v4.4.36 all-native-BGM-stop + "
             .. "native-ceiling override + private themes / Stats report",
         false
     )
@@ -5215,10 +5092,6 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "FINISHER INTERFACE: verified module+0x3AF240..0x3AF25F as the compile-safe Mandatory Special Finishers v5.1 tail.",
-        true
-    )
-    record(
         "HP, damage-taken, and damage-dealt settings activate only after verified Sora+0x74 identification adds the exact enemy to the fight roster.",
         true
     )
@@ -5227,7 +5100,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.35: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
+        "V4.4.36: graph discovery, global probing, discovery-candidate refresh, and captured-hit telemetry are fully bypassed. Sora+0x74 verification adds only exact targets to an eight-entry fight roster.",
         true
     )
     record(
@@ -5254,7 +5127,7 @@ function SETTINGS._combinedStatsInit()
         true
     )
     record(
-        "V4.4.35: configured HP, damage-taken/dealt, animation speed, and X/Z "
+        "V4.4.36: configured HP, damage-taken/dealt, animation speed, and X/Z "
             .. "movement speed remain active for verified fight-roster "
             .. "targets after lock-on is lost or changed. Death, despawn, "
             .. "scene change, or native fight-music end releases them.",
@@ -5361,7 +5234,7 @@ function SETTINGS._combinedStatsFrame()
         return
     end
 
-    -- Strict v4.4.35 boundary: recurring stats work may touch only the small
+    -- Strict v4.4.36 boundary: recurring stats work may touch only the small
     -- fight roster populated by verified Sora+0x74 targets. Global probing,
     -- graph traversal, discovery-candidate refresh, and captured-hit telemetry
     -- remain unreachable.
@@ -5590,39 +5463,40 @@ local RELOCATIONS = {
 local ORIGINAL_TARGET_FIELD = 0x0B1
 local ORIGINAL_TARGET_NEXT = 0x0B5
 
--- 103-byte dynamic-slot dispatcher. It consumes a Lua-published one-shot
--- request, stops the published BGM slot, replays that same slot with the last
--- native parameters, and tail-jumps to LuaBackend's original frame hook.
+-- 107-byte all-slot dispatcher. It consumes a Lua-published one-shot request,
+-- stops every native BGM-only slot (0..15), replays the replacement on the
+-- selected slot with the last native parameters, and tail-jumps to
+-- LuaBackend's original frame hook. Voice and sound-effect channels do not use
+-- this stop function.
 local FRAME_CODE_HEX =
-    "514883ec30833d0000000000744bc70500000000000000008b0d00000000"
-    .. "e8000000008b0d000000004531c0448b0d00000000f30f100d00000000"
-    .. "f30f1015000000004c894424204c89442428e800000000f0ff0500000000"
-    .. "488b05000000004883c43059ffe0"
-local FRAME_CODE_SIZE = 0x67
+    "51534883ec38833d00000000007450c705000000000000000031db89d9e8"
+    .. "00000000ffc383fb107cf28b0d000000004531c0448b0d00000000f30f10"
+    .. "0d00000000f30f1015000000004c894424204c89442428e800000000f0ff"
+    .. "05000000004883c4385b59ff2500000000"
+local FRAME_CODE_SIZE = 0x6B
 local FRAME_CODE_PREFIX = {
-    0x51, 0x48, 0x83, 0xEC, 0x30,
+    0x51, 0x53, 0x48, 0x83, 0xEC, 0x38,
 }
 local FRAME_RELOCATIONS = {
-    { field = 0x007, next = 0x00C, data = DATA_DISPATCH_FLAG_OFFSET },
-    { field = 0x010, next = 0x018, data = DATA_DISPATCH_FLAG_OFFSET },
-    { field = 0x01A, next = 0x01E, data = DATA_DISPATCH_BGM_ID_OFFSET },
-    { field = 0x01F, next = 0x023, absolute = BGM_STOP_FUNCTION_RVA },
-    { field = 0x025, next = 0x029, data = DATA_DISPATCH_BGM_ID_OFFSET },
-    { field = 0x02F, next = 0x033, data = DATA_DISPATCH_TIME_OFFSET },
-    { field = 0x037, next = 0x03B,
+    { field = 0x008, next = 0x00D, data = DATA_DISPATCH_FLAG_OFFSET },
+    { field = 0x011, next = 0x019, data = DATA_DISPATCH_FLAG_OFFSET },
+    { field = 0x01E, next = 0x022, absolute = BGM_STOP_FUNCTION_RVA },
+    { field = 0x02B, next = 0x02F, data = DATA_DISPATCH_BGM_ID_OFFSET },
+    { field = 0x035, next = 0x039, data = DATA_DISPATCH_TIME_OFFSET },
+    { field = 0x03D, next = 0x041,
         data = DATA_DISPATCH_VOLUME_BITS_OFFSET },
-    { field = 0x03F, next = 0x043,
+    { field = 0x045, next = 0x049,
         data = DATA_DISPATCH_FADE_BITS_OFFSET },
-    { field = 0x04E, next = 0x052, absolute = BGM_FUNCTION_RVA },
-    { field = 0x055, next = 0x059, data = DATA_DISPATCH_COUNTER_OFFSET },
-    { field = 0x05C, next = 0x060,
+    { field = 0x054, next = 0x058, absolute = BGM_FUNCTION_RVA },
+    { field = 0x05B, next = 0x05F, data = DATA_DISPATCH_COUNTER_OFFSET },
+    { field = 0x067, next = 0x06B,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 local COMBINED_CODE_SIZE = HOOK_CODE_SIZE + FRAME_CODE_SIZE
 
 -- Enemy stats/HUD controllers own these fixed private regions. The .text raw
 -- padding at 0x3ADEE0 is deliberately not reserved; private themes need its
--- complete 283-byte capacity for the main-thread dispatcher.
+-- complete 288-byte capacity for the main-thread dispatcher.
 local RESERVED_RANGES = {
     { first = 0x3AF150, last = 0x3AF300 },
     { first = 0x3AFE00, last = 0x3AFE40 },
@@ -8359,7 +8233,7 @@ local function buildPrivateThemeModule(ENEMY_CONFIG, SHARED)
 local SETTINGS = {
     ENABLE = true,
     DEBUG_MODE = SHARED.DEBUG_MODE,
-    -- V4.4.35 keeps identification on the current Sora+0x74 target, then
+    -- V4.4.36 keeps identification on the current Sora+0x74 target, then
     -- latches the first activated theme until KH1 ends that exact playback
     -- object or the scene changes. Target changes never switch the song.
     -- No graph/global target discovery or accumulated candidate sweep is
@@ -8391,7 +8265,7 @@ local SETTINGS = {
     INITIAL_THEME = nil,
 
     REPORT_FILENAME =
-        "KHFM_EnemyConfig_v4_4_35_Theme_Cave_Restoration_Theme_Report.txt",
+        "KHFM_EnemyConfig_v4_4_36_All_Native_BGM_Stop_Theme_Report.txt",
     ECHO_ALL_BGM_TO_F2 = false,
     REPORT_SAVE_INTERVAL_TICKS = SHARED.REPORT_SAVE_INTERVAL_TICKS,
     MAX_TIMELINE_ROWS = 20000,
@@ -8534,7 +8408,9 @@ local DATA_SIZE = 0x160
 
 -- The executable has one 288-byte safe code cave. V4.2 first installs a
 -- compact 91-byte allocator stage. After Lua finishes the verified chunked
--- copy, it replaces that same cave with the 283-byte register/play stage.
+-- copy, it replaces that same cave with the 286-byte register/play stage.
+-- Every play stage stops all BGM-only slots 0..15 before starting the private
+-- replacement. This does not touch KH1's voice or sound-effect channels.
 local ALLOCATION_CODE_HEX =
     "514883ec40833d00000000017542c7050000000000000000c6050000000001"
     .. "8b0d0000000085c97420ba10000000ff1500000000488905000000004885c0"
@@ -8559,59 +8435,58 @@ local ALLOCATION_RELOCATIONS = {
 }
 
 local REGISTER_CODE_HEX =
-    "514883ec40833d00000000020f85fe000000c7050000000000000000c60500"
-    .. "000000044c8b05000000004d85c00f84a7000000448b0d000000004585c90f"
-    .. "8497000000488b0d000000004885c90f8490000000e800000000488d0d0000"
-    .. "0000ba010000004c8b0500000000448b0d00000000e8000000008905000000"
-    .. "00488b0d00000000e800000000833d0000000000745ab901000000e8000000"
-    .. "00b9010000004531c0448b0d00000000f30f100d00000000f30f1015000000"
-    .. "004c894424204c89442428e800000000f0ff0500000000c6050000000007eb"
-    .. "36c6050000000003eb2dc6050000000005eb07c6050000000006488b0d0000"
-    .. "00004885c97411ff150000000048c70500000000000000004883c44059ff25"
-    .. "00000000"
-local REGISTER_CODE_SIZE = 0x11B
+    "51534883ec38833d00000000020f85ff000000c7050000000000000000c60500"
+    .. "000000044c8b05000000004d85c00f84ab000000448b0d000000004585c90f84"
+    .. "9b000000488b0d000000004885c90f8494000000e800000000488d0d00000000"
+    .. "ba010000004c8b0500000000448b0d00000000e800000000890500000000488b"
+    .. "0d00000000e800000000833d0000000000745e6a0f5b89d9e800000000ffcb79"
+    .. "f5b9010000004531c0448b0d00000000f30f100d00000000f30f101500000000"
+    .. "4c894424204c89442428e800000000f0ff0500000000c6050000000007eb33c6"
+    .. "050000000003eb2ac6050000000005eb07c6050000000006488b0d00000000e3"
+    .. "11ff150000000048c70500000000000000004883c4385b59ff2500000000"
+local REGISTER_CODE_SIZE = 0x11E
 local REGISTER_RELOCATIONS = {
-    { field = 0x007, next = 0x00C,
+    { field = 0x008, next = 0x00D,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x014, next = 0x01C,
+    { field = 0x015, next = 0x01D,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x01E, next = 0x023,
+    { field = 0x01F, next = 0x024,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x026, next = 0x02A, data = DATA_LOAD_BUFFER_OFFSET },
-    { field = 0x036, next = 0x03A, data = DATA_LOAD_SIZE_OFFSET },
-    { field = 0x046, next = 0x04A, absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x054, next = 0x058, absolute = FILE_MANAGER_LOCK_RVA },
-    { field = 0x05B, next = 0x05F, data = DATA_TARGET_NAME_OFFSET },
-    { field = 0x067, next = 0x06B, data = DATA_LOAD_BUFFER_OFFSET },
-    { field = 0x06E, next = 0x072, data = DATA_LOAD_SIZE_OFFSET },
-    { field = 0x073, next = 0x077, absolute = REGISTER_BGM_RESOURCE_RVA },
-    { field = 0x079, next = 0x07D,
+    { field = 0x027, next = 0x02B, data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x037, next = 0x03B, data = DATA_LOAD_SIZE_OFFSET },
+    { field = 0x047, next = 0x04B, absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x055, next = 0x059, absolute = FILE_MANAGER_LOCK_RVA },
+    { field = 0x05C, next = 0x060, data = DATA_TARGET_NAME_OFFSET },
+    { field = 0x068, next = 0x06C, data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x06F, next = 0x073, data = DATA_LOAD_SIZE_OFFSET },
+    { field = 0x074, next = 0x078, absolute = REGISTER_BGM_RESOURCE_RVA },
+    { field = 0x07A, next = 0x07E,
         data = DATA_TARGET_RESOURCE_OFFSET },
-    { field = 0x080, next = 0x084, absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x085, next = 0x089, absolute = FILE_MANAGER_UNLOCK_RVA },
-    { field = 0x08B, next = 0x090,
+    { field = 0x081, next = 0x085, absolute = FILE_MANAGER_POINTER_RVA },
+    { field = 0x086, next = 0x08A, absolute = FILE_MANAGER_UNLOCK_RVA },
+    { field = 0x08C, next = 0x091,
         data = DATA_TARGET_RESOURCE_OFFSET },
-    { field = 0x098, next = 0x09C, absolute = BGM_STOP_FUNCTION_RVA },
-    { field = 0x0A7, next = 0x0AB, data = DATA_DISPATCH_TIME_OFFSET },
-    { field = 0x0AF, next = 0x0B3,
+    { field = 0x099, next = 0x09D, absolute = BGM_STOP_FUNCTION_RVA },
+    { field = 0x0AC, next = 0x0B0, data = DATA_DISPATCH_TIME_OFFSET },
+    { field = 0x0B4, next = 0x0B8,
         data = DATA_DISPATCH_VOLUME_BITS_OFFSET },
-    { field = 0x0B7, next = 0x0BB,
+    { field = 0x0BC, next = 0x0C0,
         data = DATA_DISPATCH_FADE_BITS_OFFSET },
-    { field = 0x0C6, next = 0x0CA, absolute = BGM_FUNCTION_RVA },
-    { field = 0x0CD, next = 0x0D1,
+    { field = 0x0CB, next = 0x0CF, absolute = BGM_FUNCTION_RVA },
+    { field = 0x0D2, next = 0x0D6,
         data = DATA_DISPATCH_COUNTER_OFFSET },
-    { field = 0x0D3, next = 0x0D8,
+    { field = 0x0D8, next = 0x0DD,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0DC, next = 0x0E1,
+    { field = 0x0E1, next = 0x0E6,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0E5, next = 0x0EA,
+    { field = 0x0EA, next = 0x0EF,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0EE, next = 0x0F3,
+    { field = 0x0F3, next = 0x0F8,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0F6, next = 0x0FA, data = DATA_LOAD_BUFFER_OFFSET },
-    { field = 0x101, next = 0x105, absolute = ALIGNED_FREE_IAT_RVA },
-    { field = 0x108, next = 0x110, data = DATA_LOAD_BUFFER_OFFSET },
-    { field = 0x117, next = 0x11B,
+    { field = 0x0FB, next = 0x0FF, data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x103, next = 0x107, absolute = ALIGNED_FREE_IAT_RVA },
+    { field = 0x10A, next = 0x112, data = DATA_LOAD_BUFFER_OFFSET },
+    { field = 0x11A, next = 0x11E,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 
@@ -8622,68 +8497,68 @@ local REGISTER_RELOCATIONS = {
 -- duplicate-registration use-after-free crash on a configured enemy's second
 -- encounter.
 local CACHE_CODE_HEX =
-    "514883ec40833d00000000030f85f9000000c7050000000000000000c60500"
-    .. "00000004488b0d000000004885c90f8489000000e800000000448b15000000"
-    .. "004c8b1d000000004c8b05000000004531c94d85c074524539501875064d39"
-    .. "582074094d89c14d8b4008ebe64d85c9742a498b4008498941084c39050000"
-    .. "000075074c890d00000000488b0500000000498940084c890500000000488b"
-    .. "0d00000000e800000000eb1e488b0d00000000e800000000c6050000000009"
-    .. "eb4fc6050000000005eb46b901000000e800000000b9010000004531c0448b"
-    .. "0d00000000f30f100d00000000f30f1015000000004c894424204c89442428"
-    .. "e800000000f0ff0500000000c60500000000074883c44059ff2500000000"
-local CACHE_CODE_SIZE = 0x116
+    "51534883ec38833d00000000030f85fd000000c7050000000000000000c60500"
+    .. "00000004488b0d000000004885c90f8489000000e800000000448b1500000000"
+    .. "4c8b1d000000004c8b05000000004531c94d85c074524539501875064d395820"
+    .. "74094d89c14d8b4008ebe64d85c9742a498b4008498941084c39050000000075"
+    .. "074c890d00000000488b0500000000498940084c890500000000488b0d000000"
+    .. "00e800000000eb1e488b0d00000000e800000000c6050000000009eb53c60500"
+    .. "00000005eb4a6a0f5b89d9e800000000ffcb79f5b9010000004531c0448b0d00"
+    .. "000000f30f100d00000000f30f1015000000004c894424204c89442428e80000"
+    .. "0000f0ff0500000000c60500000000074883c4385b59ff2500000000"
+local CACHE_CODE_SIZE = 0x11C
 local CACHE_RELOCATIONS = {
-    { field = 0x007, next = 0x00C,
+    { field = 0x008, next = 0x00D,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x014, next = 0x01C,
+    { field = 0x015, next = 0x01D,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x01E, next = 0x023,
+    { field = 0x01F, next = 0x024,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x026, next = 0x02A,
+    { field = 0x027, next = 0x02B,
         absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x034, next = 0x038,
+    { field = 0x035, next = 0x039,
         absolute = FILE_MANAGER_LOCK_RVA },
-    { field = 0x03B, next = 0x03F,
+    { field = 0x03C, next = 0x040,
         data = DATA_TARGET_RESOURCE_OFFSET },
-    { field = 0x042, next = 0x046,
+    { field = 0x043, next = 0x047,
         data = DATA_LOAD_BUFFER_OFFSET },
-    { field = 0x049, next = 0x04D,
+    { field = 0x04A, next = 0x04E,
         absolute = BGM_RESOURCE_LIST_HEAD_RVA },
-    { field = 0x07A, next = 0x07E,
+    { field = 0x07B, next = 0x07F,
         absolute = BGM_RESOURCE_LIST_TAIL_RVA },
-    { field = 0x083, next = 0x087,
+    { field = 0x084, next = 0x088,
         absolute = BGM_RESOURCE_LIST_TAIL_RVA },
-    { field = 0x08A, next = 0x08E,
+    { field = 0x08B, next = 0x08F,
         absolute = BGM_RESOURCE_LIST_HEAD_RVA },
-    { field = 0x095, next = 0x099,
+    { field = 0x096, next = 0x09A,
         absolute = BGM_RESOURCE_LIST_HEAD_RVA },
-    { field = 0x09C, next = 0x0A0,
+    { field = 0x09D, next = 0x0A1,
         absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x0A1, next = 0x0A5,
+    { field = 0x0A2, next = 0x0A6,
         absolute = FILE_MANAGER_UNLOCK_RVA },
-    { field = 0x0AA, next = 0x0AE,
+    { field = 0x0AB, next = 0x0AF,
         absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x0AF, next = 0x0B3,
+    { field = 0x0B0, next = 0x0B4,
         absolute = FILE_MANAGER_UNLOCK_RVA },
-    { field = 0x0B5, next = 0x0BA,
+    { field = 0x0B6, next = 0x0BB,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0BE, next = 0x0C3,
+    { field = 0x0BF, next = 0x0C4,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0CB, next = 0x0CF,
+    { field = 0x0CC, next = 0x0D0,
         absolute = BGM_STOP_FUNCTION_RVA },
-    { field = 0x0DA, next = 0x0DE,
+    { field = 0x0DF, next = 0x0E3,
         data = DATA_DISPATCH_TIME_OFFSET },
-    { field = 0x0E2, next = 0x0E6,
+    { field = 0x0E7, next = 0x0EB,
         data = DATA_DISPATCH_VOLUME_BITS_OFFSET },
-    { field = 0x0EA, next = 0x0EE,
+    { field = 0x0EF, next = 0x0F3,
         data = DATA_DISPATCH_FADE_BITS_OFFSET },
-    { field = 0x0F9, next = 0x0FD,
+    { field = 0x0FE, next = 0x102,
         absolute = BGM_FUNCTION_RVA },
-    { field = 0x100, next = 0x104,
+    { field = 0x105, next = 0x109,
         data = DATA_DISPATCH_COUNTER_OFFSET },
-    { field = 0x106, next = 0x10B,
+    { field = 0x10B, next = 0x110,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x112, next = 0x116,
+    { field = 0x118, next = 0x11C,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 
@@ -8692,68 +8567,68 @@ local CACHE_RELOCATIONS = {
 -- file-manager lock, then uses the row's verified playback slot. No second
 -- registration or buffer ownership transfer occurs.
 SETTINGS._DETACHED_CACHE_CODE_HEX =
-    "514883ec40833d00000000030f85de000000c7050000000000000000c60500"
-    .. "00000004488b0d000000004885c97472e8000000004c8b05000000004d85c0"
-    .. "744c448b150000000045395018753f4c8b1d000000004d3958207532488b05"
-    .. "00000000498940084c8905000000004885c075074c890500000000ff050000"
-    .. "0000488b0d00000000e800000000eb1e488b0d00000000e800000000c60500"
-    .. "00000009eb4fc6050000000005eb46b901000000e800000000b90100000045"
-    .. "31c0448b0d00000000f30f100d00000000f30f1015000000004c894424204c"
-    .. "89442428e800000000f0ff0500000000c60500000000074883c44059ff2500"
-    .. "000000"
-SETTINGS._DETACHED_CACHE_CODE_SIZE = 0x0FB
+    "51534883ec38833d00000000030f85e2000000c7050000000000000000c60500"
+    .. "00000004488b0d000000004885c97472e8000000004c8b05000000004d85c074"
+    .. "4c448b150000000045395018753f4c8b1d000000004d3958207532488b050000"
+    .. "0000498940084c8905000000004885c075074c890500000000ff050000000048"
+    .. "8b0d00000000e800000000eb1e488b0d00000000e800000000c6050000000009"
+    .. "eb53c6050000000005eb4a6a0f5b89d9e800000000ffcb79f5b9010000004531"
+    .. "c0448b0d00000000f30f100d00000000f30f1015000000004c894424204c8944"
+    .. "2428e800000000f0ff0500000000c60500000000074883c4385b59ff25000000"
+    .. "00"
+SETTINGS._DETACHED_CACHE_CODE_SIZE = 0x101
 SETTINGS._DETACHED_CACHE_RELOCATIONS = {
-    { field = 0x007, next = 0x00C,
+    { field = 0x008, next = 0x00D,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x014, next = 0x01C,
+    { field = 0x015, next = 0x01D,
         data = DATA_DISPATCH_COMMAND_OFFSET },
-    { field = 0x01E, next = 0x023,
+    { field = 0x01F, next = 0x024,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x026, next = 0x02A,
+    { field = 0x027, next = 0x02B,
         absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x030, next = 0x034,
+    { field = 0x031, next = 0x035,
         absolute = FILE_MANAGER_LOCK_RVA },
-    { field = 0x037, next = 0x03B,
+    { field = 0x038, next = 0x03C,
         data = DATA_TARGET_NODE_OFFSET },
-    { field = 0x043, next = 0x047,
+    { field = 0x044, next = 0x048,
         data = DATA_TARGET_RESOURCE_OFFSET },
-    { field = 0x050, next = 0x054,
+    { field = 0x051, next = 0x055,
         data = DATA_LOAD_BUFFER_OFFSET },
-    { field = 0x05D, next = 0x061,
+    { field = 0x05E, next = 0x062,
         absolute = BGM_RESOURCE_LIST_HEAD_RVA },
-    { field = 0x068, next = 0x06C,
+    { field = 0x069, next = 0x06D,
         absolute = BGM_RESOURCE_LIST_HEAD_RVA },
-    { field = 0x074, next = 0x078,
+    { field = 0x075, next = 0x079,
         absolute = BGM_RESOURCE_LIST_TAIL_RVA },
-    { field = 0x07A, next = 0x07E,
+    { field = 0x07B, next = 0x07F,
         absolute = SETTINGS._BGM_RESOURCE_LIST_COUNT_RVA },
-    { field = 0x081, next = 0x085,
+    { field = 0x082, next = 0x086,
         absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x086, next = 0x08A,
+    { field = 0x087, next = 0x08B,
         absolute = FILE_MANAGER_UNLOCK_RVA },
-    { field = 0x08F, next = 0x093,
+    { field = 0x090, next = 0x094,
         absolute = FILE_MANAGER_POINTER_RVA },
-    { field = 0x094, next = 0x098,
+    { field = 0x095, next = 0x099,
         absolute = FILE_MANAGER_UNLOCK_RVA },
-    { field = 0x09A, next = 0x09F,
+    { field = 0x09B, next = 0x0A0,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0A3, next = 0x0A8,
+    { field = 0x0A4, next = 0x0A9,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0B0, next = 0x0B4,
+    { field = 0x0B1, next = 0x0B5,
         absolute = BGM_STOP_FUNCTION_RVA },
-    { field = 0x0BF, next = 0x0C3,
+    { field = 0x0C4, next = 0x0C8,
         data = DATA_DISPATCH_TIME_OFFSET },
-    { field = 0x0C7, next = 0x0CB,
+    { field = 0x0CC, next = 0x0D0,
         data = DATA_DISPATCH_VOLUME_BITS_OFFSET },
-    { field = 0x0CF, next = 0x0D3,
+    { field = 0x0D4, next = 0x0D8,
         data = DATA_DISPATCH_FADE_BITS_OFFSET },
-    { field = 0x0DE, next = 0x0E2,
+    { field = 0x0E3, next = 0x0E7,
         absolute = BGM_FUNCTION_RVA },
-    { field = 0x0E5, next = 0x0E9,
+    { field = 0x0EA, next = 0x0EE,
         data = DATA_DISPATCH_COUNTER_OFFSET },
-    { field = 0x0EB, next = 0x0F0,
+    { field = 0x0F0, next = 0x0F5,
         data = DATA_DISPATCH_STATUS_OFFSET },
-    { field = 0x0F7, next = 0x0FB,
+    { field = 0x0FD, next = 0x101,
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 
@@ -8762,10 +8637,10 @@ SETTINGS._DETACHED_CACHE_RELOCATIONS = {
 -- play calls. A slot-0 theme must patch all three values together; otherwise
 -- registration succeeds but the slot-0 playback lookup cannot select the
 -- class-1 resource.
-local REGISTER_RESOURCE_CLASS_IMMEDIATE_OFFSETS = { 0x05F }
-local REGISTER_BGM_IMMEDIATE_OFFSETS = { 0x092, 0x09C }
-local CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0C5, 0x0CF }
-SETTINGS._DETACHED_CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0AA, 0x0B4 }
+local REGISTER_RESOURCE_CLASS_IMMEDIATE_OFFSETS = { 0x060 }
+local REGISTER_BGM_IMMEDIATE_OFFSETS = { 0x0A1 }
+local CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0D4 }
+SETTINGS._DETACHED_CACHE_BGM_IMMEDIATE_OFFSETS = { 0x0B9 }
 SETTINGS._FADE_DETACH_BGM_IMMEDIATE_OFFSETS = { 0x023 }
 
 -- Stage 4 invokes KH1FM's native timed stop and removes the selected private
@@ -8838,12 +8713,15 @@ SETTINGS._FADE_DETACH_RELOCATIONS = {
         data = DATA_ORIGINAL_FRAME_POINTER_OFFSET },
 }
 local FRAME_CODE_CAPACITY = REGISTER_CODE_SIZE
-local FRAME_CODE_PREFIX = {
+SETTINGS._PLAY_FRAME_CODE_PREFIX = {
+    0x51, 0x53, 0x48, 0x83, 0xEC, 0x38,
+}
+SETTINGS._LEGACY_FRAME_CODE_PREFIX = {
     0x51, 0x48, 0x83, 0xEC, 0x40,
 }
 
 -- Enemy stats/HUD controllers own these fixed private regions. Preserve the
--- full 0x3ADEE0 raw-padding cave for this 283-byte theme dispatcher.
+-- full 0x3ADEE0 raw-padding cave for this 286-byte theme dispatcher.
 local RESERVED_RANGES = {
     { first = 0x3AF150, last = 0x3AF300 },
     { first = 0x3AFE00, last = 0x3AFE40 },
@@ -8933,7 +8811,7 @@ local lastReportSaveTick = 0
 
 local function console(message)
     ConsolePrint(
-        "[EnemyConfigV4.4.35ThemeCaveRestore] " .. message
+        "[EnemyConfigV4.4.36AllNativeBgmStop] " .. message
     )
 end
 
@@ -8984,7 +8862,7 @@ end
 
 local function buildReport()
     local lines = {
-        "KH1FM Enemy Config v4.4.35 / Theme cave restoration + "
+        "KH1FM Enemy Config v4.4.36 / All native BGM stop + "
             .. "native-ceiling override + private-theme report",
         "Target: KINGDOM HEARTS FINAL MIX.exe / Steam Global 1.0.0.2",
         "Playback: the first configured theme activated in a fight is latched. "
@@ -8992,6 +8870,10 @@ local function buildReport()
             .. "does not react to lock-on loss. It releases only after KH1 "
             .. "removes that exact BGM playback object through its native "
             .. "stop/fade lifecycle, or after a scene change.",
+        "Native suppression: immediately before every private-theme start, "
+            .. "KH1's BGM-only stop route clears slots 0 through 15. The "
+            .. "replacement is then started on its configured slot; voices "
+            .. "and sound effects are not part of this route.",
         "Stats: Sora+0x74 verification adds the exact enemy object/stat-page "
             .. "pair to a bounded fight roster. HP, damage-taken/dealt, "
             .. "animation-speed, and movement-speed remain active after "
@@ -9741,7 +9623,7 @@ local function installHooks()
     if frameCodeRva == nil then
         return false,
             "no safe executable cave was available for the packed "
-                .. "283-byte private-theme dispatcher; remove older "
+                .. "286-byte private-theme dispatcher; remove older "
                 .. "Wakka theme scripts and BGM Recorder v8, then restart"
     end
     codeRva = frameCodeRva
@@ -9977,9 +9859,15 @@ local function activateFrameDispatcher()
 end
 
 local function ownHooksStillInstalled()
+    local expectedPrefix = (
+        SETTINGS._frameStage == "register"
+        or SETTINGS._frameStage == "cache"
+        or SETTINGS._frameStage == "detached-cache"
+    ) and SETTINGS._PLAY_FRAME_CODE_PREFIX
+        or SETTINGS._LEGACY_FRAME_CODE_PREFIX
     return arraysEqual(
-            safeReadArray(frameCodeRva, #FRAME_CODE_PREFIX),
-            FRAME_CODE_PREFIX
+            safeReadArray(frameCodeRva, #expectedPrefix),
+            expectedPrefix
         )
         and (
             not frameDispatcherInstalled
@@ -11031,7 +10919,7 @@ function SETTINGS._updatePresenceAndRoute()
             SETTINGS._diagnosticFadeQueued = true
             SETTINGS._queueThemeFade(
                 currentTheme,
-                "v4.4.35 unreachable diagnostic fade/detach safeguard"
+                "v4.4.36 unreachable diagnostic fade/detach safeguard"
             )
             return
         end
@@ -11950,6 +11838,12 @@ function SETTINGS._privateThemeInit()
         false
     )
     addStatus(
+        "Native suppression: every private-theme activation stops all "
+            .. "BGM-only slots 0 through 15 before the replacement starts; "
+            .. "voice and sound-effect channels are untouched.",
+        false
+    )
+    addStatus(
         "Target gate: themes accept only the verified live Sora+0x74 "
             .. "target. Unique fingerprints identify the same enemy across "
             .. "rooms; model-graph sightings cannot start music.",
@@ -12192,6 +12086,7 @@ function SETTINGS._privateThemeInit()
             .. "HP, damage, speed, and theme identification use only "
             .. "Sora+0x74. Target changes cannot switch the fight song; KH1's "
             .. "native playback end or a scene change releases the latch. "
+            .. "Every private start clears BGM slots 0 through 15 first. "
             .. "Use a full game restart instead of F1.",
         true
     )
@@ -12289,7 +12184,7 @@ function _OnInit()
     INTERNAL_CONFIG._excludedTargets = {}
     INTERNAL_CONFIG._excludedStatsLogged = {}
 
-    -- Strict v4.4.35 boundary: Sora+0x74 is still the only enemy-verification
+    -- Strict v4.4.36 boundary: Sora+0x74 is still the only enemy-verification
     -- route. Verified targets enter a bounded fight roster so HP, damage, and
     -- speed remain active without lock-on. The private-theme module also
     -- accepts only Sora+0x74 evidence. Broad discovery refresh, global target
@@ -12299,7 +12194,7 @@ function _OnInit()
     statsModule.init()
     privateThemeModule.init()
     ConsolePrint(
-        "[EnemyConfigV4.4.35ThemeCaveRestore] INITIALIZED: "
+        "[EnemyConfigV4.4.36AllNativeBgmStop] INITIALIZED: "
             .. "stats and private-theme modules completed their independent "
             .. "startup checks. Use their READY/DISABLED lines as the "
             .. "authoritative status."
